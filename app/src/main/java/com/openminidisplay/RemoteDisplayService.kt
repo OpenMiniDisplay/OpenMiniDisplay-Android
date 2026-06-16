@@ -5,13 +5,17 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.wifi.WifiManager
+import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.core.app.NotificationCompat
 import com.openminidisplay.display.protocol.DisplayCommandHandler
 import kotlinx.coroutines.CoroutineScope
@@ -44,8 +48,20 @@ class RemoteDisplayService : Service() {
 
     private val lastHeartbeatAt = AtomicLong(0L)
 
+    private val powerReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != Intent.ACTION_BATTERY_CHANGED) return
+            handleBatteryChanged(intent)
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
+        RuntimeState.setPluggedIn(PowerState.isPluggedIn(this))
+        registerPowerReceiver()
+        if (RuntimeState.isPluggedIn.value) {
+            ChargeLimitManager.onPowerConnected(this)
+        }
         acquireServiceWakeLock()
         acquireWifiLock()
         startForeground(NOTIFICATION_ID, buildNotification(ConnectionState.DISCONNECTED))
@@ -63,6 +79,7 @@ class RemoteDisplayService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        unregisterPowerReceiver()
         heartbeatJob?.cancel()
         lowPowerJob?.cancel()
         serverJob?.cancel()
@@ -176,6 +193,7 @@ class RemoteDisplayService : Service() {
             }
             ConnectionState.DISCONNECTED -> {
                 lastHeartbeatAt.set(0L)
+                screenManager.onDisconnected()
                 scheduleLowPowerMode()
             }
         }
@@ -203,6 +221,38 @@ class RemoteDisplayService : Service() {
     private fun cancelLowPowerMode() {
         lowPowerJob?.cancel()
         lowPowerJob = null
+    }
+
+    private fun handleBatteryChanged(intent: Intent) {
+        val plugged = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0
+        val wasPlugged = RuntimeState.isPluggedIn.value
+        RuntimeState.setPluggedIn(plugged)
+
+        when {
+            plugged && !wasPlugged -> ChargeLimitManager.onPowerConnected(this)
+            !plugged && wasPlugged -> ChargeLimitManager.onPowerDisconnected(this)
+        }
+    }
+
+    private fun registerPowerReceiver() {
+        val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(powerReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            ContextCompat.registerReceiver(
+                this,
+                powerReceiver,
+                filter,
+                ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+        }
+    }
+
+    private fun unregisterPowerReceiver() {
+        try {
+            unregisterReceiver(powerReceiver)
+        } catch (_: IllegalArgumentException) {
+        }
     }
 
     private fun isHandshake(message: String): Boolean {

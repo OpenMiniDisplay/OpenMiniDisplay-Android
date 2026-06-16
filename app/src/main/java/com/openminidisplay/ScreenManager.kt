@@ -31,10 +31,36 @@ class ScreenManager(private val context: Context) {
         navigateToDashboard()
     }
 
+    fun onDisconnected() {
+        releaseScreenWakeLock()
+    }
+
+    fun shouldKeepScreenOn(): Boolean {
+        val connected = RuntimeState.connectionState.value == ConnectionState.CONNECTED
+        val pluggedIn = RuntimeState.isPluggedIn.value
+        return connected || pluggedIn
+    }
+
     fun beginLowPowerTransition() {
         releaseScreenWakeLock()
+        if (PowerState.isPluggedIn(context)) {
+            val intent = Intent(context, MainActivity::class.java).apply {
+                action = ACTION_BEGIN_LOW_POWER
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+            }
+            context.startActivity(intent)
+        } else {
+            enterBatteryLowPower()
+        }
+    }
+
+    fun enterBatteryLowPower() {
+        cancelDimming()
+        releaseScreenWakeLock()
         val intent = Intent(context, MainActivity::class.java).apply {
-            action = ACTION_BEGIN_LOW_POWER
+            action = ACTION_BATTERY_LOW_POWER
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                 Intent.FLAG_ACTIVITY_CLEAR_TOP or
                 Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -43,10 +69,15 @@ class ScreenManager(private val context: Context) {
     }
 
     fun showPitchBlackScreen() {
+        if (!PowerState.isPluggedIn(context)) return
         navigateToPitchBlack()
     }
 
     fun startGradualDim(activity: Activity, onComplete: () -> Unit = {}) {
+        if (!shouldKeepScreenOn()) {
+            onComplete()
+            return
+        }
         configurePreventLock(activity)
         dimJob?.cancel()
         dimJob = mainScope.launch {
@@ -88,6 +119,24 @@ class ScreenManager(private val context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             activity.setShowWhenLocked(true)
             activity.setTurnScreenOn(true)
+        }
+    }
+
+    fun configureAllowLock(activity: Activity) {
+        activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            activity.setShowWhenLocked(false)
+            activity.setTurnScreenOn(false)
+        }
+    }
+
+    fun applyScreenPolicy(activity: Activity) {
+        if (shouldKeepScreenOn()) {
+            configurePreventLock(activity)
+            keepScreenOn(activity, enabled = true)
+        } else {
+            configureAllowLock(activity)
+            keepScreenOn(activity, enabled = false)
         }
     }
 
@@ -198,5 +247,6 @@ class ScreenManager(private val context: Context) {
         const val MAX_BRIGHTNESS = 255
 
         const val ACTION_BEGIN_LOW_POWER = "com.openminidisplay.action.BEGIN_LOW_POWER"
+        const val ACTION_BATTERY_LOW_POWER = "com.openminidisplay.action.BATTERY_LOW_POWER"
     }
 }

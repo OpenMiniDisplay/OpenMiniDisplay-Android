@@ -21,7 +21,7 @@ class PitchBlackActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        screenManager.configurePreventLock(this)
+        screenManager.applyScreenPolicy(this)
 
         setContent {
             val brightness by RuntimeState.brightness.collectAsStateWithLifecycle()
@@ -46,6 +46,10 @@ class PitchBlackActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        screenManager.configurePreventLock(this)
+        if (screenManager.shouldKeepScreenOn()) {
+            screenManager.configurePreventLock(this)
+        } else {
+            finish()
+        }
     }
 }

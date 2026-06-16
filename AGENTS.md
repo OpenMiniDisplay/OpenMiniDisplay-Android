@@ -51,7 +51,8 @@ Controller (TCP :15180)
         ▼
 RemoteDisplayService ──► DisplayCommandHandler
         │                      └── DisplayStore (layout + data + page index)
-        ├── RuntimeState (connection + brightness)
+        ├── RuntimeState (connection + brightness + power)
+        ├── PowerState / ChargeLimitManager
         └── ScreenManager (Application singleton via OpenMiniDisplayApp)
                     │
         ┌───────────┴────────────┐
@@ -67,7 +68,9 @@ RemoteDisplayService ──► DisplayCommandHandler
 | `RemoteDisplayService` | Foreground service, TCP listener, heartbeat, command dispatch |
 | `DisplayCommandHandler` | Parses `SET` / `LAYOUT` / `PATCH` / `GOTO` |
 | `DisplayStore` | Layout structure, widget values, and page index |
-| `RuntimeState` | Connection state and screen brightness level |
+| `RuntimeState` | Connection state, screen brightness, and power plug status |
+| `PowerState` | Reads whether the device is connected to external power |
+| `ChargeLimitManager` | Best-effort 80% charge limit when plugged in (OEM/settings dependent) |
 | `OpenMiniDisplayApp` | Application entry; holds singleton `ScreenManager` |
 | `ScreenManager` | Brightness, wake locks, low-power transitions |
 | `DisplayHost` | Full-screen pager + page dots |
@@ -132,13 +135,25 @@ Per-widget fields: `id`, `type`, `row`, `col`, `rowSpan`, `colSpan`, optional `s
 
 ## Low-power behavior
 
+Power source affects screen and charging policy.
+
+| Power | Connection | Screen behavior |
+|-------|------------|-----------------|
+| **Plugged in** | CONNECTED | Wake lock, prevent lock, max brightness |
+| **Plugged in** | DISCONNECTED (idle) | After 60 s: 10 s dim → `PitchBlackActivity` (screen stays on) |
+| **On battery** | CONNECTED | Wake lock, prevent lock (active display) |
+| **On battery** | DISCONNECTED (idle) | After 60 s: allow system lock / sleep (no dim, no pitch-black) |
+
 | Phase | Behavior |
 |-------|----------|
 | **CONNECTED** | Screen wake lock, max brightness, dashboard visible |
 | **DISCONNECTED** | UI stays on dashboard; 60 s countdown to low-power |
-| **Dimming** | Linear 10 s fade (~60 fps); content stays visible during dim |
-| **After dim** | Navigate to `PitchBlackActivity` (content hidden, screen stays on) |
+| **Dimming (plugged only)** | Linear 10 s fade (~60 fps); content stays visible during dim |
+| **After dim (plugged only)** | Navigate to `PitchBlackActivity` (content hidden, screen stays on) |
+| **Battery low-power** | Clear keep-screen-on; move task to back; system may lock/sleep |
 | **User touch** (while disconnected) | Restore brightness, return to dashboard, reset 60 s timer |
+| **Plugged in** | Try to enable **80% charge limit** via OEM/settings keys when permitted (`WRITE_SETTINGS` / device support) |
+| **Unplugged** | Restore previous charge-limit setting if app had applied one |
 
 ## Build & device scripts
 
@@ -167,6 +182,8 @@ app/src/main/java/com/openminidisplay/
 ├── OpenMiniDisplayApp.kt
 ├── RemoteDisplayService.kt
 ├── RuntimeState.kt
+├── PowerState.kt
+├── ChargeLimitManager.kt
 ├── ScreenManager.kt
 ├── MainActivity.kt
 ├── PitchBlackActivity.kt

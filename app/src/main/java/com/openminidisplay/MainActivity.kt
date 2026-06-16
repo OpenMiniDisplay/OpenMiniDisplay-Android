@@ -38,8 +38,13 @@ class MainActivity : ComponentActivity() {
         setContent {
             OpenMiniDisplayTheme {
                 val brightness by RuntimeState.brightness.collectAsStateWithLifecycle()
+                val connectionState by RuntimeState.connectionState.collectAsStateWithLifecycle()
+                val isPluggedIn by RuntimeState.isPluggedIn.collectAsStateWithLifecycle()
                 LaunchedEffect(brightness) {
                     screenManager.applyBrightnessToActivity(this@MainActivity, brightness)
+                }
+                LaunchedEffect(connectionState, isPluggedIn) {
+                    screenManager.applyScreenPolicy(this@MainActivity)
                 }
                 DisplayHost(
                     onUserActivity = { RemoteDisplayService.notifyUserActivity(this@MainActivity) },
@@ -47,13 +52,13 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        handleBeginLowPowerIfNeeded()
+        handlePowerIntents()
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleBeginLowPowerIfNeeded()
+        handlePowerIntents()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -72,6 +77,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun handlePowerIntents() {
+        when (intent?.action) {
+            ScreenManager.ACTION_BEGIN_LOW_POWER -> handleBeginLowPowerIfNeeded()
+            ScreenManager.ACTION_BATTERY_LOW_POWER -> handleBatteryLowPowerIfNeeded()
+        }
+    }
+
     private fun handleBeginLowPowerIfNeeded() {
         if (intent?.action != ScreenManager.ACTION_BEGIN_LOW_POWER) return
         intent.action = null
@@ -82,14 +94,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onResume() {
-        super.onResume()
-        screenManager.configurePreventLock(this)
-        applyConnectedUiState()
+    private fun handleBatteryLowPowerIfNeeded() {
+        if (intent?.action != ScreenManager.ACTION_BATTERY_LOW_POWER) return
+        intent.action = null
+
+        screenManager.applyScreenPolicy(this)
+        moveTaskToBack(true)
     }
 
-    private fun applyConnectedUiState() {
-        screenManager.keepScreenOn(this, enabled = true)
+    override fun onResume() {
+        super.onResume()
+        screenManager.applyScreenPolicy(this)
     }
 
     private fun requestStartupPermissions() {

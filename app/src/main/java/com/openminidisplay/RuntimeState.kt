@@ -11,6 +11,9 @@ object RuntimeState {
     private val _brightness = MutableStateFlow(1f)
     val brightness: StateFlow<Float> = _brightness.asStateFlow()
 
+    private val _isPluggedIn = MutableStateFlow(false)
+    val isPluggedIn: StateFlow<Boolean> = _isPluggedIn.asStateFlow()
+
     fun setConnectionState(state: ConnectionState) {
         if (_connectionState.value != state) {
             _connectionState.value = state
@@ -19,5 +22,11 @@ object RuntimeState {
 
     internal fun setBrightness(level: Float) {
         _brightness.value = level.coerceIn(0f, 1f)
+    }
+
+    fun setPluggedIn(pluggedIn: Boolean) {
+        if (_isPluggedIn.value != pluggedIn) {
+            _isPluggedIn.value = pluggedIn
+        }
     }
 }
