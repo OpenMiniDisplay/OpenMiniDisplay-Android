@@ -50,11 +50,9 @@ Controller (TCP :15180)
         │
         ▼
 RemoteDisplayService ──► DisplayCommandHandler
-        │                      ├── DisplayLayoutRepository   (structure)
-        │                      ├── DisplayDataRepository      (values)
-        │                      └── DisplayNavigationRepository  (page index)
-        ├── ConnectionStateRepository
-        └── ScreenManager (+ ScreenBrightnessState)
+        │                      └── DisplayStore (layout + data + page index)
+        ├── RuntimeState (connection + brightness)
+        └── ScreenManager (Application singleton via OpenMiniDisplayApp)
                     │
         ┌───────────┴────────────┐
         ▼                        ▼
@@ -68,9 +66,9 @@ RemoteDisplayService ──► DisplayCommandHandler
 |-----------|------|
 | `RemoteDisplayService` | Foreground service, TCP listener, heartbeat, command dispatch |
 | `DisplayCommandHandler` | Parses `SET` / `LAYOUT` / `PATCH` / `GOTO` |
-| `DisplayLayoutRepository` | Layout JSON → pages/grid/widgets |
-| `DisplayDataRepository` | Widget values keyed by id |
-| `DisplayNavigationRepository` | Current logical page index |
+| `DisplayStore` | Layout structure, widget values, and page index |
+| `RuntimeState` | Connection state and screen brightness level |
+| `OpenMiniDisplayApp` | Application entry; holds singleton `ScreenManager` |
 | `ScreenManager` | Brightness, wake locks, low-power transitions |
 | `DisplayHost` | Full-screen pager + page dots |
 | `PageRenderer` | Grid layout; single-widget pages are borderless |
@@ -166,18 +164,16 @@ Gradle directly: `./gradlew assembleDebug` / `./gradlew installDebug`
 
 ```
 app/src/main/java/com/openminidisplay/
+├── OpenMiniDisplayApp.kt
 ├── RemoteDisplayService.kt
+├── RuntimeState.kt
 ├── ScreenManager.kt
-├── ScreenBrightnessState.kt
 ├── MainActivity.kt
 ├── PitchBlackActivity.kt
-├── ConnectionStateRepository.kt
 └── display/
+    ├── DisplayStore.kt
     ├── DefaultDisplayLayout.kt
     ├── model/DisplayModels.kt
-    ├── repo/DisplayLayoutRepository.kt
-    ├── repo/DisplayDataRepository.kt
-    ├── repo/DisplayNavigationRepository.kt
     └── protocol/
         ├── DisplayCommandHandler.kt
         └── DisplayLayoutParser.kt
@@ -186,7 +182,7 @@ app/src/main/java/com/openminidisplay/
     │   ├── DisplayHost.kt
     │   ├── PageRenderer.kt
     │   ├── WidgetSlotContainer.kt
-    │   └── WidgetRegistry.kt
+    │   └── WidgetRenderer.kt
     └── widgets/
         ├── ChartWidgets.kt
         └── TextWidget.kt
@@ -213,7 +209,7 @@ AGENTS.md
 3. Keep **layout and data separate** — no values embedded in layout JSON.
 4. Preserve **single-widget borderless** rendering.
 5. **No vertical scroll** on display pages.
-6. Extend **`WidgetType` + `WidgetRegistry`** instead of hardcoding UI in `MainActivity`.
+6. Extend **`WidgetType` + `WidgetRenderer`** instead of hardcoding UI in `MainActivity`.
 7. Preserve **infinite pager** behavior for multi-page layouts.
 8. Prefer minimal diffs; avoid new dependencies unless clearly necessary.
 9. Test on device when behavior changes: `./scripts/layout-test.sh` or `./scripts/dev.sh debug`.

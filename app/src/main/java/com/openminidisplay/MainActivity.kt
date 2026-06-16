@@ -21,7 +21,7 @@ import com.openminidisplay.ui.theme.OpenMiniDisplayTheme
 
 class MainActivity : ComponentActivity() {
 
-    private lateinit var screenManager: ScreenManager
+    private val screenManager get() = OpenMiniDisplayApp.screenManagerOf(this)
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -32,13 +32,12 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         hideSystemBars()
 
-        screenManager = ScreenManager(applicationContext)
         requestStartupPermissions()
         RemoteDisplayService.start(applicationContext)
 
         setContent {
             OpenMiniDisplayTheme {
-                val brightness by ScreenBrightnessState.level.collectAsStateWithLifecycle()
+                val brightness by RuntimeState.brightness.collectAsStateWithLifecycle()
                 LaunchedEffect(brightness) {
                     screenManager.applyBrightnessToActivity(this@MainActivity, brightness)
                 }
@@ -90,8 +89,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun applyConnectedUiState() {
-        val brightness = ScreenBrightnessState.level.value
-        screenManager.applyBrightnessToActivity(this, brightness)
         screenManager.keepScreenOn(this, enabled = true)
     }
 

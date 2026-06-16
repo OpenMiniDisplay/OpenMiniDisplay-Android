@@ -50,7 +50,7 @@ class ScreenManager(private val context: Context) {
         configurePreventLock(activity)
         dimJob?.cancel()
         dimJob = mainScope.launch {
-            val startBrightness = ScreenBrightnessState.level.value.coerceIn(0f, 1f)
+            val startBrightness = RuntimeState.brightness.value.coerceIn(0f, 1f)
             val startTimeMs = System.currentTimeMillis()
             while (true) {
                 val elapsed = System.currentTimeMillis() - startTimeMs
@@ -78,10 +78,9 @@ class ScreenManager(private val context: Context) {
         dimJob = null
     }
 
-    fun release() {
+    fun releaseWakeLocks() {
         cancelDimming()
         releaseScreenWakeLock()
-        mainScope.cancel()
     }
 
     fun configurePreventLock(activity: Activity) {
@@ -102,7 +101,7 @@ class ScreenManager(private val context: Context) {
         forceSystemUpdate: Boolean = false,
     ) {
         val clamped = fraction.coerceIn(0f, 1f)
-        ScreenBrightnessState.update(clamped)
+        RuntimeState.setBrightness(clamped)
         activity?.let { setWindowBrightness(it, clamped) }
         val systemLevel = (MIN_BRIGHTNESS + (MAX_BRIGHTNESS - MIN_BRIGHTNESS) * clamped).toInt()
         if (forceSystemUpdate || systemLevel != lastSystemBrightness) {

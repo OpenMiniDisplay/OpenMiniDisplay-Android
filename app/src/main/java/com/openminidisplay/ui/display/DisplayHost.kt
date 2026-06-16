@@ -26,9 +26,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.openminidisplay.ConnectionState
-import com.openminidisplay.ConnectionStateRepository
-import com.openminidisplay.display.repo.DisplayLayoutRepository
-import com.openminidisplay.display.repo.DisplayNavigationRepository
+import com.openminidisplay.RuntimeState
+import com.openminidisplay.display.DisplayStore
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 private const val INFINITE_PAGER_CENTER = Int.MAX_VALUE / 2
@@ -41,9 +40,9 @@ fun DisplayHost(
     onUserActivity: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val layout by DisplayLayoutRepository.layout.collectAsStateWithLifecycle()
-    val connectionState by ConnectionStateRepository.state.collectAsStateWithLifecycle()
-    val targetPageIndex by DisplayNavigationRepository.pageIndex.collectAsStateWithLifecycle()
+    val layout by DisplayStore.layout.collectAsStateWithLifecycle()
+    val connectionState by RuntimeState.connectionState.collectAsStateWithLifecycle()
+    val targetPageIndex by DisplayStore.pageIndex.collectAsStateWithLifecycle()
     val pages = layout.pages
 
     val userActivityModifier = if (connectionState == ConnectionState.DISCONNECTED) {
@@ -104,7 +103,7 @@ fun DisplayHost(
             .distinctUntilChanged()
             .collect { (_, inProgress) ->
                 if (!inProgress) {
-                    DisplayNavigationRepository.goTo(
+                    DisplayStore.goTo(
                         mod(pagerState.currentPage, pageCount),
                         layout,
                     )

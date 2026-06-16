@@ -32,7 +32,7 @@ import java.util.concurrent.atomic.AtomicLong
 class RemoteDisplayService : Service() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private lateinit var screenManager: ScreenManager
+    private val screenManager get() = OpenMiniDisplayApp.screenManagerOf(this)
 
     private var serverSocket: ServerSocket? = null
     private var wifiLock: WifiManager.WifiLock? = null
@@ -46,7 +46,6 @@ class RemoteDisplayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        screenManager = ScreenManager(applicationContext)
         acquireServiceWakeLock()
         acquireWifiLock()
         startForeground(NOTIFICATION_ID, buildNotification(ConnectionState.DISCONNECTED))
@@ -71,7 +70,7 @@ class RemoteDisplayService : Service() {
         closeServerSocket()
         releaseWifiLock()
         releaseServiceWakeLock()
-        screenManager.release()
+        screenManager.releaseWakeLocks()
         serviceScope.cancel()
         super.onDestroy()
     }
@@ -164,10 +163,10 @@ class RemoteDisplayService : Service() {
     }
 
     private fun setConnectionState(state: ConnectionState) {
-        val current = ConnectionStateRepository.state.value
+        val current = RuntimeState.connectionState.value
         if (current == state) return
 
-        ConnectionStateRepository.updateState(state)
+        RuntimeState.setConnectionState(state)
         updateNotification(state)
 
         when (state) {
@@ -192,7 +191,7 @@ class RemoteDisplayService : Service() {
     }
 
     private fun handleUserActivity() {
-        if (ConnectionStateRepository.state.value != ConnectionState.DISCONNECTED) return
+        if (RuntimeState.connectionState.value != ConnectionState.DISCONNECTED) return
 
         Log.i(TAG, "User activity detected; restoring brightness and resetting low-power timer")
         screenManager.cancelDimming()

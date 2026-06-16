@@ -2,11 +2,11 @@ package com.openminidisplay.ui.display
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import com.openminidisplay.display.DisplayStore
 import com.openminidisplay.display.model.TextStyleKind
 import com.openminidisplay.display.model.WidgetSlot
 import com.openminidisplay.display.model.WidgetType
 import com.openminidisplay.display.model.WidgetValue
-import com.openminidisplay.display.repo.DisplayDataRepository
 import com.openminidisplay.ui.widgets.BarChartWidget
 import com.openminidisplay.ui.widgets.LineChartWidget
 import com.openminidisplay.ui.widgets.PieChartWidget
@@ -20,7 +20,7 @@ fun RenderWidget(
     showChrome: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val value = DisplayDataRepository.valueFor(slot.id, slot.type)
+    val value = DisplayStore.valueFor(slot.id, slot.type)
     val label = slot.label ?: slot.id
     val expanded = !showChrome
 
