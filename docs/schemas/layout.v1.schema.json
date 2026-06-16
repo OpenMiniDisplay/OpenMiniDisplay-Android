@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/OpenMiniDisplay/OpenMiniDisplay-Android/schemas/layout.v1.schema.json",
+  "title": "OpenMiniDisplay Layout v1",
+  "type": "object",
+  "required": ["pages"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1
+    },
+    "pages": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/page" }
+    }
+  },
+  "$defs": {
+    "page": {
+      "type": "object",
+      "required": ["id", "widgets"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "grid": {
+          "type": "object",
+          "properties": {
+            "rows": { "type": "integer", "minimum": 1, "default": 1 },
+            "cols": { "type": "integer", "minimum": 1, "default": 1 },
+            "gap": { "type": "integer", "minimum": 0, "default": 8 },
+            "padding": { "type": "integer", "minimum": 0, "default": 16 }
+          },
+          "additionalProperties": false
+        },
+        "widgets": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/widget" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "widget": {
+      "type": "object",
+      "required": ["id", "type", "row", "col"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": {
+          "type": "string",
+          "enum": ["text", "metric", "progress", "ring", "line", "bar", "pie"]
+        },
+        "row": { "type": "integer", "minimum": 0 },
+        "col": { "type": "integer", "minimum": 0 },
+        "rowSpan": { "type": "integer", "minimum": 1, "default": 1 },
+        "colSpan": { "type": "integer", "minimum": 1, "default": 1 },
+        "style": {
+          "type": "string",
+          "enum": ["headline", "body", "caption", "metric"],
+          "default": "body"
+        },
+        "label": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
