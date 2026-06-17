@@ -1,9 +1,11 @@
 package com.openminidisplay.ui.display
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -30,8 +32,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.LineHeightStyle
@@ -69,6 +72,7 @@ private fun mod(n: Int, divisor: Int): Int = ((n % divisor) + divisor) % divisor
 @Composable
 fun DisplayHost(
     onUserActivity: () -> Unit,
+    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val layout by DisplayStore.layout.collectAsStateWithLifecycle()
@@ -117,6 +121,7 @@ fun DisplayHost(
             showPageIndicator = pages.size > 1,
             pageCount = pages.size,
             activePage = activePage.coerceIn(0, (pages.size - 1).coerceAtLeast(0)),
+            onOpenSettings = onOpenSettings,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
@@ -188,8 +193,10 @@ private fun DisplayBottomBar(
     showPageIndicator: Boolean,
     pageCount: Int,
     activePage: Int,
+    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val view = LocalView.current
     val connectionState by RuntimeState.connectionState.collectAsStateWithLifecycle()
     val batteryLevel by RuntimeState.batteryLevel.collectAsStateWithLifecycle()
     val isPluggedIn by RuntimeState.isPluggedIn.collectAsStateWithLifecycle()
@@ -230,67 +237,76 @@ private fun DisplayBottomBar(
                 .padding(horizontal = BottomBarHorizontalPadding),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-        Text(
-            text = timeText,
-            modifier = Modifier.weight(1f),
-            style = barTextStyle,
-            color = muted,
-            textAlign = TextAlign.Start,
-        )
+            Text(
+                text = timeText,
+                modifier = Modifier
+                    .weight(1f)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onLongPress = {
+                                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                onOpenSettings()
+                            },
+                        )
+                    },
+                style = barTextStyle,
+                color = muted,
+                textAlign = TextAlign.Start,
+            )
 
-        if (showPageIndicator) {
+            if (showPageIndicator) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    repeat(pageCount) { index ->
+                        val selected = activePage == index
+                        Box(
+                            modifier = Modifier
+                                .size(if (selected) 8.dp else 6.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (selected) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f)
+                                    },
+                                ),
+                        )
+                    }
+                }
+            }
+
             Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                repeat(pageCount) { index ->
-                    val selected = activePage == index
+                if (batteryLabel != null) {
+                    Text(
+                        text = batteryLabel,
+                        style = barTextStyle,
+                        color = muted,
+                    )
+                }
+                Row(
+                    modifier = Modifier.padding(start = if (batteryLabel != null) 10.dp else 0.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Box(
                         modifier = Modifier
-                            .size(if (selected) 8.dp else 6.dp)
+                            .size(6.dp)
                             .clip(CircleShape)
-                            .background(
-                                if (selected) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f)
-                                },
-                            ),
+                            .background(connectionColor),
+                    )
+                    Text(
+                        text = connectionLabel,
+                        style = barTextStyle,
+                        color = muted,
                     )
                 }
             }
-        }
-
-        Row(
-            modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.End,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (batteryLabel != null) {
-                Text(
-                    text = batteryLabel,
-                    style = barTextStyle,
-                    color = muted,
-                )
-            }
-            Row(
-                modifier = Modifier.padding(start = if (batteryLabel != null) 10.dp else 0.dp),
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(connectionColor),
-                )
-                Text(
-                    text = connectionLabel,
-                    style = barTextStyle,
-                    color = muted,
-                )
-            }
-        }
         }
     }
 }

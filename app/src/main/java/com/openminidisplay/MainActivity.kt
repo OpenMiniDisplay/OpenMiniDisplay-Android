@@ -19,6 +19,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.openminidisplay.settings.AppPreferences
 import com.openminidisplay.ui.display.DisplayHost
 import com.openminidisplay.ui.theme.OpenMiniDisplayTheme
 
@@ -44,11 +45,12 @@ class MainActivity : ComponentActivity() {
                 val brightness by RuntimeState.brightness.collectAsStateWithLifecycle()
                 val connectionState by RuntimeState.connectionState.collectAsStateWithLifecycle()
                 val isPluggedIn by RuntimeState.isPluggedIn.collectAsStateWithLifecycle()
+                val keepScreenOnPlugged by AppPreferences.keepScreenOnWhenPlugged.collectAsStateWithLifecycle()
                 val batteryDeepIdle by RuntimeState.batteryDeepIdle.collectAsStateWithLifecycle()
                 LaunchedEffect(brightness) {
                     screenManager.applyBrightnessToActivity(this@MainActivity, brightness)
                 }
-                LaunchedEffect(connectionState, isPluggedIn) {
+                LaunchedEffect(connectionState, isPluggedIn, keepScreenOnPlugged) {
                     screenManager.applyScreenPolicy(this@MainActivity)
                 }
                 LaunchedEffect(batteryDeepIdle) {
@@ -62,6 +64,9 @@ class MainActivity : ComponentActivity() {
                 DisplayHost(
                     modifier = Modifier.fillMaxSize(),
                     onUserActivity = { RemoteDisplayService.notifyUserActivity(this@MainActivity) },
+                    onOpenSettings = {
+                        startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
+                    },
                 )
             }
         }

@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import android.view.WindowManager
+import com.openminidisplay.settings.AppPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -38,7 +39,8 @@ class ScreenManager(private val context: Context) {
     fun shouldKeepScreenOn(): Boolean {
         val connected = RuntimeState.connectionState.value == ConnectionState.CONNECTED
         val pluggedIn = RuntimeState.isPluggedIn.value
-        return connected || pluggedIn
+        val keepWhenPlugged = AppPreferences.keepScreenOnWhenPlugged()
+        return connected || (pluggedIn && keepWhenPlugged)
     }
 
     fun beginLowPowerTransition() {
@@ -80,13 +82,14 @@ class ScreenManager(private val context: Context) {
         dimJob = mainScope.launch {
             val startBrightness = RuntimeState.brightness.value.coerceIn(0f, 1f)
             val startTimeMs = System.currentTimeMillis()
+            val durationMs = AppPreferences.gradualDimMs()
             while (true) {
                 val elapsed = System.currentTimeMillis() - startTimeMs
-                if (elapsed >= GRADUAL_DIM_DURATION_MS) {
+                if (elapsed >= durationMs) {
                     applyBrightness(activity, 0f, forceSystemUpdate = true)
                     break
                 }
-                val progress = elapsed.toFloat() / GRADUAL_DIM_DURATION_MS
+                val progress = elapsed.toFloat() / durationMs
                 val fraction = startBrightness * (1f - progress)
                 applyBrightness(activity, fraction)
                 delay(FRAME_DELAY_MS)
