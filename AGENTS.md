@@ -142,7 +142,8 @@ Power source affects screen and charging policy.
 | **Plugged in** | CONNECTED | Wake lock, prevent lock, max brightness |
 | **Plugged in** | DISCONNECTED (idle) | After 60 s: 10 s dim → `PitchBlackActivity` (screen stays on) |
 | **On battery** | CONNECTED | Wake lock, prevent lock (active display) |
-| **On battery** | DISCONNECTED (idle) | After 60 s: allow system lock / sleep (no dim, no pitch-black) |
+| **On battery** | DISCONNECTED (idle) | After 60 s: **battery deep idle** — stop TCP listener, release wake/Wi‑Fi locks, allow lock/sleep |
+| **Battery deep idle** | — | **No TCP listener**; controller cannot connect until user wakes the device (open app / tap notification) |
 
 | Phase | Behavior |
 |-------|----------|
@@ -150,7 +151,8 @@ Power source affects screen and charging policy.
 | **DISCONNECTED** | UI stays on dashboard; 60 s countdown to low-power |
 | **Dimming (plugged only)** | Linear 10 s fade (~60 fps); content stays visible during dim |
 | **After dim (plugged only)** | Navigate to `PitchBlackActivity` (content hidden, screen stays on) |
-| **Battery low-power** | Clear keep-screen-on; move task to back; system may lock/sleep |
+| **Battery low-power** | Release service wake/Wi‑Fi locks; clear keep-screen-on; finish UI task |
+| **Battery deep idle** | Stop TCP listener; notification shows sleep state; wake restores listener |
 | **User touch** (while disconnected) | Restore brightness, return to dashboard, reset 60 s timer |
 | **Plugged in** | Try to enable **80% charge limit** via OEM/settings keys when permitted (`WRITE_SETTINGS` / device support) |
 | **Unplugged** | Restore previous charge-limit setting if app had applied one |

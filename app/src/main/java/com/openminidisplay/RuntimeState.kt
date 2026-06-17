@@ -14,6 +14,9 @@ object RuntimeState {
     private val _isPluggedIn = MutableStateFlow(false)
     val isPluggedIn: StateFlow<Boolean> = _isPluggedIn.asStateFlow()
 
+    private val _batteryDeepIdle = MutableStateFlow(false)
+    val batteryDeepIdle: StateFlow<Boolean> = _batteryDeepIdle.asStateFlow()
+
     fun setConnectionState(state: ConnectionState) {
         if (_connectionState.value != state) {
             _connectionState.value = state
@@ -27,6 +30,12 @@ object RuntimeState {
     fun setPluggedIn(pluggedIn: Boolean) {
         if (_isPluggedIn.value != pluggedIn) {
             _isPluggedIn.value = pluggedIn
+        }
+    }
+
+    fun setBatteryDeepIdle(deepIdle: Boolean) {
+        if (_batteryDeepIdle.value != deepIdle) {
+            _batteryDeepIdle.value = deepIdle
         }
     }
 }

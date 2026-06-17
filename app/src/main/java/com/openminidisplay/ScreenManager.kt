@@ -59,13 +59,10 @@ class ScreenManager(private val context: Context) {
     fun enterBatteryLowPower() {
         cancelDimming()
         releaseScreenWakeLock()
-        val intent = Intent(context, MainActivity::class.java).apply {
-            action = ACTION_BATTERY_LOW_POWER
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                Intent.FLAG_ACTIVITY_SINGLE_TOP
+        val intent = Intent(context, RemoteDisplayService::class.java).apply {
+            action = RemoteDisplayService.ACTION_BATTERY_DEEP_IDLE
         }
-        context.startActivity(intent)
+        context.startService(intent)
     }
 
     fun showPitchBlackScreen() {
@@ -247,6 +244,5 @@ class ScreenManager(private val context: Context) {
         const val MAX_BRIGHTNESS = 255
 
         const val ACTION_BEGIN_LOW_POWER = "com.openminidisplay.action.BEGIN_LOW_POWER"
-        const val ACTION_BATTERY_LOW_POWER = "com.openminidisplay.action.BATTERY_LOW_POWER"
     }
 }

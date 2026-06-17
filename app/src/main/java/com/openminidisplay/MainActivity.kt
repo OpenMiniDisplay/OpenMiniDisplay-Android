@@ -40,11 +40,20 @@ class MainActivity : ComponentActivity() {
                 val brightness by RuntimeState.brightness.collectAsStateWithLifecycle()
                 val connectionState by RuntimeState.connectionState.collectAsStateWithLifecycle()
                 val isPluggedIn by RuntimeState.isPluggedIn.collectAsStateWithLifecycle()
+                val batteryDeepIdle by RuntimeState.batteryDeepIdle.collectAsStateWithLifecycle()
                 LaunchedEffect(brightness) {
                     screenManager.applyBrightnessToActivity(this@MainActivity, brightness)
                 }
                 LaunchedEffect(connectionState, isPluggedIn) {
                     screenManager.applyScreenPolicy(this@MainActivity)
+                }
+                LaunchedEffect(batteryDeepIdle) {
+                    if (batteryDeepIdle) {
+                        screenManager.applyScreenPolicy(this@MainActivity)
+                        if (!isFinishing) {
+                            finishAndRemoveTask()
+                        }
+                    }
                 }
                 DisplayHost(
                     onUserActivity = { RemoteDisplayService.notifyUserActivity(this@MainActivity) },
@@ -78,9 +87,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handlePowerIntents() {
-        when (intent?.action) {
-            ScreenManager.ACTION_BEGIN_LOW_POWER -> handleBeginLowPowerIfNeeded()
-            ScreenManager.ACTION_BATTERY_LOW_POWER -> handleBatteryLowPowerIfNeeded()
+        if (intent?.action == ScreenManager.ACTION_BEGIN_LOW_POWER) {
+            handleBeginLowPowerIfNeeded()
         }
     }
 
@@ -92,14 +100,6 @@ class MainActivity : ComponentActivity() {
         screenManager.startGradualDim(this) {
             screenManager.showPitchBlackScreen()
         }
-    }
-
-    private fun handleBatteryLowPowerIfNeeded() {
-        if (intent?.action != ScreenManager.ACTION_BATTERY_LOW_POWER) return
-        intent.action = null
-
-        screenManager.applyScreenPolicy(this)
-        moveTaskToBack(true)
     }
 
     override fun onResume() {
@@ -116,7 +116,7 @@ class MainActivity : ComponentActivity() {
             screenManager.openWriteSettingsScreen()
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && PowerState.isPluggedIn(this)) {
             val powerManager = getSystemService(POWER_SERVICE) as android.os.PowerManager
             if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
                 val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {

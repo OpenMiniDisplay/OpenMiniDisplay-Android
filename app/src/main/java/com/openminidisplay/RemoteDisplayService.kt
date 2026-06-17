@@ -70,8 +70,10 @@ class RemoteDisplayService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_USER_ACTIVITY) {
-            handleUserActivity()
+        when (intent?.action) {
+            ACTION_USER_ACTIVITY -> handleUserActivity()
+            ACTION_BATTERY_DEEP_IDLE -> enterBatteryDeepIdle()
+            ACTION_EXIT_BATTERY_DEEP_IDLE -> exitBatteryDeepIdle()
         }
         return START_STICKY
     }
@@ -93,11 +95,18 @@ class RemoteDisplayService : Service() {
     }
 
     private fun startListener() {
+        if (RuntimeState.batteryDeepIdle.value) return
+
+        serverJob?.cancel()
+        closeClientSocket()
+        closeServerSocket()
+
         serverJob = serviceScope.launch {
             try {
+                val timeoutMs = currentAcceptTimeoutMs().toInt()
                 serverSocket = ServerSocket(LISTEN_PORT).apply {
                     reuseAddress = true
-                    soTimeout = SOCKET_ACCEPT_TIMEOUT_MS.toInt()
+                    soTimeout = timeoutMs
                 }
                 Log.i(TAG, "Listening on port $LISTEN_PORT")
 
@@ -115,9 +124,19 @@ class RemoteDisplayService : Service() {
                     }
                 }
             } catch (exception: Exception) {
-                Log.e(TAG, "Failed to start listener", exception)
+                if (isActive) {
+                    Log.e(TAG, "Failed to start listener", exception)
+                }
             }
         }
+    }
+
+    private fun stopListener() {
+        serverJob?.cancel()
+        serverJob = null
+        closeClientSocket()
+        closeServerSocket()
+        Log.i(TAG, "Stopped listening on port $LISTEN_PORT")
     }
 
     private fun handleClient(socket: Socket) {
@@ -156,7 +175,14 @@ class RemoteDisplayService : Service() {
     private fun startHeartbeatMonitor() {
         heartbeatJob = serviceScope.launch {
             while (isActive) {
-                delay(HEARTBEAT_CHECK_INTERVAL_MS)
+                val intervalMs = when {
+                    RuntimeState.connectionState.value != ConnectionState.CONNECTED -> HEARTBEAT_IDLE_INTERVAL_MS
+                    RuntimeState.batteryDeepIdle.value -> HEARTBEAT_IDLE_INTERVAL_MS
+                    else -> HEARTBEAT_CHECK_INTERVAL_MS
+                }
+                delay(intervalMs)
+                if (RuntimeState.connectionState.value != ConnectionState.CONNECTED) continue
+
                 val elapsed = System.currentTimeMillis() - lastHeartbeatAt.get()
                 if (lastHeartbeatAt.get() > 0L && elapsed > HEARTBEAT_TIMEOUT_MS) {
                     setConnectionState(ConnectionState.DISCONNECTED)
@@ -189,11 +215,17 @@ class RemoteDisplayService : Service() {
         when (state) {
             ConnectionState.CONNECTED -> {
                 cancelLowPowerMode()
+                wakeFromBatteryDeepIdle()
                 screenManager.onConnected()
             }
             ConnectionState.DISCONNECTED -> {
                 lastHeartbeatAt.set(0L)
                 screenManager.onDisconnected()
+                if (!RuntimeState.isPluggedIn.value) {
+                    releaseServiceWakeLock()
+                    releaseWifiLock()
+                    updateListenerTimeout()
+                }
                 scheduleLowPowerMode()
             }
         }
@@ -212,6 +244,7 @@ class RemoteDisplayService : Service() {
         if (RuntimeState.connectionState.value != ConnectionState.DISCONNECTED) return
 
         Log.i(TAG, "User activity detected; restoring brightness and resetting low-power timer")
+        wakeFromBatteryDeepIdle()
         screenManager.cancelDimming()
         screenManager.restoreBrightnessLevel()
         screenManager.navigateToDashboard()
@@ -229,8 +262,75 @@ class RemoteDisplayService : Service() {
         RuntimeState.setPluggedIn(plugged)
 
         when {
-            plugged && !wasPlugged -> ChargeLimitManager.onPowerConnected(this)
+            plugged && !wasPlugged -> {
+                wakeFromBatteryDeepIdle()
+                ChargeLimitManager.onPowerConnected(this)
+            }
             !plugged && wasPlugged -> ChargeLimitManager.onPowerDisconnected(this)
+        }
+    }
+
+    private fun enterBatteryDeepIdle() {
+        if (RuntimeState.batteryDeepIdle.value) return
+        if (RuntimeState.isPluggedIn.value) return
+        if (RuntimeState.connectionState.value == ConnectionState.CONNECTED) return
+
+        Log.i(TAG, "Entering battery deep idle: stopping listener and releasing wake locks")
+        RuntimeState.setBatteryDeepIdle(true)
+        stopListener()
+        releaseServiceWakeLock()
+        releaseWifiLock()
+        updateNotification(RuntimeState.connectionState.value)
+    }
+
+    private fun wakeFromBatteryDeepIdle() {
+        val wasDeepIdle = RuntimeState.batteryDeepIdle.value
+        if (wasDeepIdle) {
+            RuntimeState.setBatteryDeepIdle(false)
+            Log.i(TAG, "Woke from battery deep idle: listener restarted")
+        }
+
+        acquireServiceWakeLock()
+        acquireWifiLock()
+
+        if (wasDeepIdle || !isListenerRunning()) {
+            startListener()
+        } else {
+            updateListenerTimeout()
+        }
+        updateNotification(RuntimeState.connectionState.value)
+
+        if (wasDeepIdle && RuntimeState.connectionState.value == ConnectionState.DISCONNECTED) {
+            scheduleLowPowerMode()
+        }
+    }
+
+    private fun isListenerRunning(): Boolean {
+        val socket = serverSocket
+        return serverJob?.isActive == true && socket != null && !socket.isClosed
+    }
+
+    private fun exitBatteryDeepIdle() {
+        wakeFromBatteryDeepIdle()
+    }
+
+    private fun updateListenerTimeout() {
+        val timeoutMs = currentAcceptTimeoutMs()
+        try {
+            serverSocket?.soTimeout = timeoutMs.toInt()
+        } catch (exception: Exception) {
+            Log.w(TAG, "Failed to update listener timeout", exception)
+        }
+    }
+
+    private fun currentAcceptTimeoutMs(): Long {
+        return if (
+            !RuntimeState.isPluggedIn.value &&
+            RuntimeState.connectionState.value == ConnectionState.DISCONNECTED
+        ) {
+            BATTERY_IDLE_ACCEPT_TIMEOUT_MS
+        } else {
+            SOCKET_ACCEPT_TIMEOUT_MS
         }
     }
 
@@ -266,6 +366,8 @@ class RemoteDisplayService : Service() {
     }
 
     private fun acquireWifiLock() {
+        if (wifiLock?.isHeld == true) return
+
         val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
         @Suppress("DEPRECATION")
         wifiLock = wifiManager.createWifiLock(
@@ -287,6 +389,8 @@ class RemoteDisplayService : Service() {
     }
 
     private fun acquireServiceWakeLock() {
+        if (serviceWakeLock?.isHeld == true) return
+
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         serviceWakeLock = powerManager.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK,
@@ -334,9 +438,10 @@ class RemoteDisplayService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val statusText = when (state) {
-            ConnectionState.CONNECTED -> getString(R.string.status_connected)
-            ConnectionState.DISCONNECTED -> getString(R.string.status_waiting)
+        val statusText = when {
+            RuntimeState.batteryDeepIdle.value -> getString(R.string.status_battery_saver)
+            state == ConnectionState.CONNECTED -> getString(R.string.status_connected)
+            else -> getString(R.string.status_waiting)
         }
 
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
@@ -383,12 +488,19 @@ class RemoteDisplayService : Service() {
         private const val HEARTBEAT_TIMEOUT_MS = 5_000L
         private const val LOW_POWER_DELAY_MS = 60_000L
         private const val HEARTBEAT_CHECK_INTERVAL_MS = 1_000L
+        private const val HEARTBEAT_IDLE_INTERVAL_MS = 30_000L
         private const val SOCKET_ACCEPT_TIMEOUT_MS = 2_000L
+        private const val BATTERY_IDLE_ACCEPT_TIMEOUT_MS = 30_000L
         private const val SOCKET_READ_TIMEOUT_MS = 2_000L
         private const val RETRY_DELAY_MS = 1_000L
 
+        const val ACTION_BATTERY_DEEP_IDLE = "com.openminidisplay.action.BATTERY_DEEP_IDLE"
+        const val ACTION_EXIT_BATTERY_DEEP_IDLE = "com.openminidisplay.action.EXIT_BATTERY_DEEP_IDLE"
+
         fun start(context: Context) {
-            val intent = Intent(context, RemoteDisplayService::class.java)
+            val intent = Intent(context, RemoteDisplayService::class.java).apply {
+                action = ACTION_EXIT_BATTERY_DEEP_IDLE
+            }
             context.startForegroundService(intent)
         }
 
