@@ -32,6 +32,7 @@ fun TextWidget(
         Text(
             text = text,
             style = typography,
+            color = MaterialTheme.colorScheme.onSurface,
             textAlign = if (expanded) TextAlign.Center else TextAlign.Start,
             maxLines = if (expanded) 2 else 3,
             overflow = TextOverflow.Ellipsis,

@@ -12,7 +12,7 @@
 
     <string name="settings_title">Settings</string>
     <string name="settings_back">←</string>
-    <string name="settings_entry_hint">Tip: long-press the clock on the display to open settings anytime.</string>
+    <string name="settings_entry_hint">Tip: long-press anywhere on the display to open settings. Swiping won\'t trigger it.</string>
     <string name="settings_section_appearance">Appearance</string>
     <string name="settings_section_power">Power</string>
     <string name="settings_section_system">System</string>

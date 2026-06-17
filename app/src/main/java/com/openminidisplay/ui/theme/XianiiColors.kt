@@ -35,8 +35,9 @@ internal object XianiiColors {
     val LightOnAccent = Color(0xFFF5F5F5)
 
     val OledBlack = Color(0xFF000000)
-    val OledBorder = Color(0xFF3A3A3A)
-    val OledMuted = Color(0xFF8A8A8A)
+    val OledBorder = Color(0xFF505050)
+    val OledContent = Color(0xFFF0F0F0)
+    val OledMuted = Color(0xFFADADAD)
 
     val XianiiDark = darkColorScheme(
         primary = DarkPrimary,
@@ -82,14 +83,17 @@ internal object XianiiColors {
         tertiary = DarkAccent,
         onTertiary = DarkOnAccent,
         background = OledBlack,
-        onBackground = DarkContent,
+        onBackground = OledContent,
         surface = OledBlack,
-        onSurface = DarkContent,
-        surfaceVariant = OledBlack,
+        onSurface = OledContent,
+        surfaceVariant = OledBorder,
         onSurfaceVariant = OledMuted,
         outline = OledBorder,
+        outlineVariant = OledBorder.copy(alpha = 0.7f),
         error = DarkError,
-        onError = OledBlack,
+        onError = OledContent,
+        inverseSurface = OledContent,
+        inverseOnSurface = OledBlack,
     )
 
     fun schemeFor(mode: AppColorScheme) = when (mode) {
