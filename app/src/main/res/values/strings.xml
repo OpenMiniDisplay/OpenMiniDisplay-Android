@@ -2,7 +2,10 @@
 <resources>
     <string name="app_name">OpenMiniDisplay</string>
     <string name="status_waiting">Waiting for Connection...</string>
+    <string name="status_waiting_short">Waiting</string>
     <string name="status_connected">Connected</string>
+    <string name="battery_charging">%1$d%% ⚡</string>
+    <string name="battery_level">%1$d%%</string>
     <string name="status_battery_saver">Sleeping — tap to wake and connect</string>
     <string name="notification_channel_name">Remote Display Service</string>
     <string name="notification_channel_description">Keeps the display listener alive in the background.</string>

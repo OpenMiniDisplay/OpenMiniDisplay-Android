@@ -14,6 +14,9 @@ object RuntimeState {
     private val _isPluggedIn = MutableStateFlow(false)
     val isPluggedIn: StateFlow<Boolean> = _isPluggedIn.asStateFlow()
 
+    private val _batteryLevel = MutableStateFlow(-1)
+    val batteryLevel: StateFlow<Int> = _batteryLevel.asStateFlow()
+
     private val _batteryDeepIdle = MutableStateFlow(false)
     val batteryDeepIdle: StateFlow<Boolean> = _batteryDeepIdle.asStateFlow()
 
@@ -30,6 +33,13 @@ object RuntimeState {
     fun setPluggedIn(pluggedIn: Boolean) {
         if (_isPluggedIn.value != pluggedIn) {
             _isPluggedIn.value = pluggedIn
+        }
+    }
+
+    fun setBatteryLevel(level: Int) {
+        val clamped = level.coerceIn(-1, 100)
+        if (_batteryLevel.value != clamped) {
+            _batteryLevel.value = clamped
         }
     }
 
