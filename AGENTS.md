@@ -159,23 +159,28 @@ Power source affects screen and charging policy.
 
 ## Build & device scripts
 
+Build and adb run inside the [android-dev-docker](https://github.com/Nigh/android-dev-docker) image (`xianii/android-dev:latest` by default). Do **not** mix host `adb` with container `adb` — mount `~/.adb` for stable USB authorization.
+
 ```bash
+docker pull xianii/android-dev:latest   # once
+
 ./scripts/dev.sh devices
-./scripts/dev.sh build
+./scripts/dev.sh build                  # Docker + ./gradlew assembleDebug
 ./scripts/dev.sh install
 ./scripts/dev.sh run
 ./scripts/dev.sh logs
-./scripts/dev.sh debug          # build + install + launch + logs
+./scripts/dev.sh debug                  # build + install + launch + logs
+./scripts/dev.sh shell                  # interactive container (USB adb)
 
-./scripts/layout-test.sh        # LAYOUT + SET loop + GOTO pages
-./scripts/widget-test.sh        # SET loop (default layout)
-./scripts/chart-test.sh         # chart SET loop
-./scripts/connect-test.sh       # handshake smoke test
+./scripts/layout-test.sh                # LAYOUT + SET loop + GOTO pages
+./scripts/widget-test.sh                # SET loop (default layout)
+./scripts/chart-test.sh                 # chart SET loop
+./scripts/connect-test.sh               # handshake smoke test
 ```
 
-Scripts read `LISTEN_PORT=15180` from `scripts/common.sh`. Use `ANDROID_SERIAL=...` when multiple devices are connected.
+Scripts read `LISTEN_PORT=15180` from `scripts/common.sh`. Use `ANDROID_SERIAL=...` when multiple devices are connected. Override the image with `ANDROID_DEV_IMAGE=...`. Set `ANDROID_DEV_USER=1` to run Gradle as the host user (requires writable `~/.gradle`).
 
-Gradle directly: `./gradlew assembleDebug` / `./gradlew installDebug`
+Persistent host dirs (auto-mounted): `~/.gradle`, `~/.android` (debug keystore), `~/.adb` (adb keys).
 
 ## Key files
 
