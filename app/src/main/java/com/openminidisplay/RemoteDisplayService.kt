@@ -57,7 +57,11 @@ class RemoteDisplayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        val batteryIntent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         RuntimeState.setPluggedIn(PowerState.isPluggedIn(this))
+        if (batteryIntent != null) {
+            RuntimeState.setBatteryLevel(PowerState.batteryLevelPercent(batteryIntent))
+        }
         registerPowerReceiver()
         if (RuntimeState.isPluggedIn.value) {
             ChargeLimitManager.onPowerConnected(this)
@@ -260,6 +264,7 @@ class RemoteDisplayService : Service() {
         val plugged = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0
         val wasPlugged = RuntimeState.isPluggedIn.value
         RuntimeState.setPluggedIn(plugged)
+        RuntimeState.setBatteryLevel(PowerState.batteryLevelPercent(intent))
 
         when {
             plugged && !wasPlugged -> {
