@@ -2,12 +2,13 @@ package com.openminidisplay.ui.settings
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -21,11 +22,31 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.openminidisplay.settings.AppColorScheme
 import com.openminidisplay.settings.AppPreferences
+import com.openminidisplay.ui.theme.XianiiColors
+
+private val CardShape = RoundedCornerShape(12.dp)
+private val ChipShape = RoundedCornerShape(8.dp)
+
+@Composable
+private fun oledBorderColor() = XianiiColors.OledBorder
+
+@Composable
+private fun Modifier.settingsCardSurface(shape: Shape = CardShape): Modifier {
+    val colorScheme by AppPreferences.colorScheme.collectAsStateWithLifecycle()
+    return if (colorScheme == AppColorScheme.OLED) {
+        clip(shape)
+            .border(1.dp, oledBorderColor(), shape)
+            .background(Color.Black)
+    } else {
+        clip(shape).background(MaterialTheme.colorScheme.surface)
+    }
+}
 
 @Composable
 fun SettingsSection(
@@ -49,32 +70,15 @@ fun SettingsCard(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val colorScheme by AppPreferences.colorScheme.collectAsStateWithLifecycle()
-    val shape = RoundedCornerShape(12.dp)
-    if (colorScheme == AppColorScheme.OLED) {
-        Surface(
-            modifier = modifier.fillMaxWidth(),
-            shape = shape,
-            color = Color.Black,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-        ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                content = content,
-            )
-        }
-    } else {
-        Surface(
-            modifier = modifier.fillMaxWidth(),
-            shape = shape,
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 1.dp,
-        ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                content = content,
-            )
-        }
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .settingsCardSurface(CardShape),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            content = content,
+        )
     }
 }
 
@@ -89,7 +93,7 @@ fun SettingsRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
+            .clip(ChipShape)
             .then(
                 if (clickable) {
                     Modifier.clickable(onClick = onClick!!)
@@ -128,22 +132,22 @@ fun SettingsChoiceChip(
     modifier: Modifier = Modifier,
 ) {
     val colorScheme by AppPreferences.colorScheme.collectAsStateWithLifecycle()
-    val shape = RoundedCornerShape(8.dp)
+    val borderColor = when {
+        selected -> MaterialTheme.colorScheme.primary
+        colorScheme == AppColorScheme.OLED -> oledBorderColor()
+        else -> MaterialTheme.colorScheme.outline
+    }
     val background = when {
         selected -> MaterialTheme.colorScheme.primary.copy(alpha = if (colorScheme == AppColorScheme.OLED) 0.22f else 0.18f)
         colorScheme == AppColorScheme.OLED -> Color.Black
         else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
     }
-    val border = when {
-        selected -> BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
-        colorScheme == AppColorScheme.OLED -> BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-        else -> null
-    }
-    Surface(
-        modifier = modifier.clickable(onClick = onClick),
-        shape = shape,
-        color = background,
-        border = border,
+    Box(
+        modifier = modifier
+            .clip(ChipShape)
+            .border(1.dp, borderColor, ChipShape)
+            .background(background)
+            .clickable(onClick = onClick),
     ) {
         Text(
             text = label,
@@ -163,7 +167,7 @@ fun SettingsChoiceChip(
 fun SettingsDivider() {
     val colorScheme by AppPreferences.colorScheme.collectAsStateWithLifecycle()
     val color = if (colorScheme == AppColorScheme.OLED) {
-        MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)
+        oledBorderColor()
     } else {
         MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
     }

@@ -1,11 +1,7 @@
 package com.openminidisplay.ui.display
 
-import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -30,10 +26,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
@@ -83,27 +77,20 @@ fun DisplayHost(
     var bottomBarHeight by remember { mutableStateOf(0.dp) }
     val density = LocalDensity.current
 
-    val userActivityModifier = if (connectionState == ConnectionState.DISCONNECTED) {
-        Modifier.pointerInput(Unit) {
-            awaitEachGesture {
-                awaitFirstDown(requireUnconsumed = false)
-                onUserActivity()
-            }
-        }
-    } else {
-        Modifier
-    }
-
     Box(
         modifier = modifier
             .fillMaxSize()
+            .displayGestures(
+                connectionState = connectionState,
+                onUserActivity = onUserActivity,
+                onOpenSettings = onOpenSettings,
+            )
             .background(MaterialTheme.colorScheme.background),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(bottom = bottomBarHeight)
-                .then(userActivityModifier),
+                .padding(bottom = bottomBarHeight),
         ) {
             when {
                 pages.isEmpty() -> Unit
@@ -121,7 +108,6 @@ fun DisplayHost(
             showPageIndicator = pages.size > 1,
             pageCount = pages.size,
             activePage = activePage.coerceIn(0, (pages.size - 1).coerceAtLeast(0)),
-            onOpenSettings = onOpenSettings,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
@@ -193,10 +179,8 @@ private fun DisplayBottomBar(
     showPageIndicator: Boolean,
     pageCount: Int,
     activePage: Int,
-    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val view = LocalView.current
     val connectionState by RuntimeState.connectionState.collectAsStateWithLifecycle()
     val batteryLevel by RuntimeState.batteryLevel.collectAsStateWithLifecycle()
     val isPluggedIn by RuntimeState.isPluggedIn.collectAsStateWithLifecycle()
@@ -239,16 +223,7 @@ private fun DisplayBottomBar(
         ) {
             Text(
                 text = timeText,
-                modifier = Modifier
-                    .weight(1f)
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onLongPress = {
-                                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                                onOpenSettings()
-                            },
-                        )
-                    },
+                modifier = Modifier.weight(1f),
                 style = barTextStyle,
                 color = muted,
                 textAlign = TextAlign.Start,

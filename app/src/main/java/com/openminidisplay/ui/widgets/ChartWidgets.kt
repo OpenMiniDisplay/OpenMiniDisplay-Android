@@ -48,7 +48,7 @@ fun ProgressBarWidget(
         horizontalAlignment = if (expanded) Alignment.CenterHorizontally else Alignment.Start,
     ) {
         if (showLabel) {
-            Text(label, style = MaterialTheme.typography.labelMedium)
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface)
         }
         LinearProgressIndicator(
             progress = { value / 100f },
@@ -60,6 +60,7 @@ fun ProgressBarWidget(
         Text(
             "${value.toInt()}%",
             style = if (expanded) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
         )
     }
 }
@@ -119,6 +120,7 @@ fun RingProgressWidget(
                 Text(
                     "${value.toInt()}%",
                     style = if (expanded) MaterialTheme.typography.displaySmall else MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
             }
         }
@@ -138,11 +140,11 @@ fun LineChartWidget(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (showLabel) {
-            Text(label, style = MaterialTheme.typography.labelMedium)
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface)
         }
         if (series.size < 2) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Need 2+ points", style = MaterialTheme.typography.bodySmall)
+                Text("Need 2+ points", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             return
         }
@@ -185,11 +187,11 @@ fun BarChartWidget(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (showLabel) {
-            Text(label, style = MaterialTheme.typography.labelMedium)
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface)
         }
         if (series.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No data", style = MaterialTheme.typography.bodySmall)
+                Text("No data", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             return
         }
@@ -224,11 +226,11 @@ fun PieChartWidget(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (showLabel) {
-            Text(label, style = MaterialTheme.typography.labelMedium)
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface)
         }
         if (slices.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No data", style = MaterialTheme.typography.bodySmall)
+                Text("No data", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             return
         }
