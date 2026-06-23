@@ -55,10 +55,7 @@ class MainActivity : ComponentActivity() {
                 }
                 LaunchedEffect(batteryDeepIdle) {
                     if (batteryDeepIdle) {
-                        screenManager.applyScreenPolicy(this@MainActivity)
-                        if (!isFinishing) {
-                            finishAndRemoveTask()
-                        }
+                        screenManager.configureAllowLock(this@MainActivity)
                     }
                 }
                 DisplayHost(
