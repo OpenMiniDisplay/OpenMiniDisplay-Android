@@ -72,6 +72,9 @@ class RemoteDisplayService : Service() {
         startForeground(NOTIFICATION_ID, buildNotification(ConnectionState.DISCONNECTED))
         startListener()
         startHeartbeatMonitor()
+        if (RuntimeState.connectionState.value == ConnectionState.DISCONNECTED) {
+            scheduleLowPowerMode()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
