@@ -18,6 +18,7 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.core.app.NotificationCompat
 import com.openminidisplay.display.protocol.DisplayCommandHandler
+import com.openminidisplay.settings.AppPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -78,6 +79,7 @@ class RemoteDisplayService : Service() {
             ACTION_USER_ACTIVITY -> handleUserActivity()
             ACTION_BATTERY_DEEP_IDLE -> enterBatteryDeepIdle()
             ACTION_EXIT_BATTERY_DEEP_IDLE -> exitBatteryDeepIdle()
+            ACTION_RESTART_LISTENER -> restartListener()
         }
         return START_STICKY
     }
@@ -108,11 +110,11 @@ class RemoteDisplayService : Service() {
         serverJob = serviceScope.launch {
             try {
                 val timeoutMs = currentAcceptTimeoutMs().toInt()
-                serverSocket = ServerSocket(LISTEN_PORT).apply {
+                serverSocket = ServerSocket(AppPreferences.listenPort()).apply {
                     reuseAddress = true
                     soTimeout = timeoutMs
                 }
-                Log.i(TAG, "Listening on port $LISTEN_PORT")
+                Log.i(TAG, "Listening on port ${AppPreferences.listenPort()}")
 
                 while (isActive) {
                     try {
@@ -140,7 +142,13 @@ class RemoteDisplayService : Service() {
         serverJob = null
         closeClientSocket()
         closeServerSocket()
-        Log.i(TAG, "Stopped listening on port $LISTEN_PORT")
+        Log.i(TAG, "Stopped listening on port ${AppPreferences.listenPort()}")
+    }
+
+    private fun restartListener() {
+        if (RuntimeState.batteryDeepIdle.value) return
+        stopListener()
+        startListener()
     }
 
     private fun handleClient(socket: Socket) {
@@ -187,8 +195,9 @@ class RemoteDisplayService : Service() {
                 delay(intervalMs)
                 if (RuntimeState.connectionState.value != ConnectionState.CONNECTED) continue
 
+                val heartbeatTimeoutMs = AppPreferences.heartbeatTimeoutMs()
                 val elapsed = System.currentTimeMillis() - lastHeartbeatAt.get()
-                if (lastHeartbeatAt.get() > 0L && elapsed > HEARTBEAT_TIMEOUT_MS) {
+                if (lastHeartbeatAt.get() > 0L && elapsed > heartbeatTimeoutMs) {
                     setConnectionState(ConnectionState.DISCONNECTED)
                 }
             }
@@ -200,10 +209,11 @@ class RemoteDisplayService : Service() {
     }
 
     private fun scheduleDisconnectedIfStale() {
+        val timeoutMs = AppPreferences.heartbeatTimeoutMs()
         serviceScope.launch {
-            delay(HEARTBEAT_TIMEOUT_MS)
+            delay(timeoutMs)
             val elapsed = System.currentTimeMillis() - lastHeartbeatAt.get()
-            if (elapsed > HEARTBEAT_TIMEOUT_MS) {
+            if (elapsed > timeoutMs) {
                 setConnectionState(ConnectionState.DISCONNECTED)
             }
         }
@@ -237,9 +247,10 @@ class RemoteDisplayService : Service() {
 
     private fun scheduleLowPowerMode() {
         lowPowerJob?.cancel()
+        val delayMs = AppPreferences.lowPowerDelayMs()
         lowPowerJob = serviceScope.launch {
-            Log.i(TAG, "Connection lost; entering low-power mode in ${LOW_POWER_DELAY_MS}ms")
-            delay(LOW_POWER_DELAY_MS)
+            Log.i(TAG, "Connection lost; entering low-power mode in ${delayMs}ms")
+            delay(delayMs)
             screenManager.beginLowPowerTransition()
         }
     }
@@ -490,8 +501,6 @@ class RemoteDisplayService : Service() {
         private const val HANDSHAKE_TOKEN = "OPENMINIDISPLAY"
         private const val HEARTBEAT_TOKEN = "PING"
 
-        private const val HEARTBEAT_TIMEOUT_MS = 5_000L
-        private const val LOW_POWER_DELAY_MS = 60_000L
         private const val HEARTBEAT_CHECK_INTERVAL_MS = 1_000L
         private const val HEARTBEAT_IDLE_INTERVAL_MS = 30_000L
         private const val SOCKET_ACCEPT_TIMEOUT_MS = 2_000L
@@ -501,6 +510,7 @@ class RemoteDisplayService : Service() {
 
         const val ACTION_BATTERY_DEEP_IDLE = "com.openminidisplay.action.BATTERY_DEEP_IDLE"
         const val ACTION_EXIT_BATTERY_DEEP_IDLE = "com.openminidisplay.action.EXIT_BATTERY_DEEP_IDLE"
+        const val ACTION_RESTART_LISTENER = "com.openminidisplay.action.RESTART_LISTENER"
 
         fun start(context: Context) {
             val intent = Intent(context, RemoteDisplayService::class.java).apply {
@@ -512,6 +522,13 @@ class RemoteDisplayService : Service() {
         fun notifyUserActivity(context: Context) {
             val intent = Intent(context, RemoteDisplayService::class.java).apply {
                 action = ACTION_USER_ACTIVITY
+            }
+            context.startService(intent)
+        }
+
+        fun restartListener(context: Context) {
+            val intent = Intent(context, RemoteDisplayService::class.java).apply {
+                action = ACTION_RESTART_LISTENER
             }
             context.startService(intent)
         }

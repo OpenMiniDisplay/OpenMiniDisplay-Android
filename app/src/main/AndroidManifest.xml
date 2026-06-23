@@ -32,6 +32,11 @@
         </activity>
 
         <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+
+        <activity
             android:name=".PitchBlackActivity"
             android:exported="false"
             android:launchMode="singleTop"
