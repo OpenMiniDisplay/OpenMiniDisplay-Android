@@ -14,19 +14,17 @@ fun PageRenderer(
     page: DisplayPage,
     modifier: Modifier = Modifier,
 ) {
-    val showChrome = page.widgets.size > 1
+    val showPageChrome = page.cards.size > 1
     val padding = page.grid.padding.dp
 
-    if (page.widgets.size == 1) {
-        val slot = page.widgets.first()
-        Box(
-            modifier = modifier
-                .fillMaxSize()
-                .padding(padding),
-        ) {
-            WidgetSlotContainer(showChrome = false, modifier = Modifier.fillMaxSize()) {
-                RenderWidget(slot = slot, showChrome = false, modifier = Modifier.fillMaxSize())
-            }
+    if (page.cards.size == 1) {
+        val card = page.cards.first()
+        CardContainer(showChrome = false, modifier = modifier.fillMaxSize()) {
+            CardRenderer(
+                card = card,
+                showPageChrome = false,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
         return
     }
@@ -36,9 +34,13 @@ fun PageRenderer(
             .fillMaxSize()
             .padding(padding),
         content = {
-            page.widgets.forEach { slot ->
-                WidgetSlotContainer(showChrome = showChrome, modifier = Modifier) {
-                    RenderWidget(slot = slot, showChrome = showChrome, modifier = Modifier.fillMaxSize())
+            page.cards.forEach { card ->
+                CardContainer(showChrome = showPageChrome, modifier = Modifier) {
+                    CardRenderer(
+                        card = card,
+                        showPageChrome = showPageChrome,
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 }
             }
         },
@@ -46,7 +48,7 @@ fun PageRenderer(
             rows = page.grid.rows,
             cols = page.grid.cols,
             gap = page.grid.gap.dp,
-            widgets = page.widgets,
+            items = page.cards,
         ),
     )
 }

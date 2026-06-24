@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import android.util.Log
 import android.view.WindowManager
 import com.openminidisplay.settings.AppPreferences
 import kotlinx.coroutines.CoroutineScope
@@ -24,6 +25,8 @@ class ScreenManager(private val context: Context) {
     private var screenWakeLock: PowerManager.WakeLock? = null
     private var dimJob: Job? = null
     private var lastSystemBrightness = -1
+    private var savedSystemBrightness: Int? = null
+    private var displayPowerSavingActive = false
 
     fun onConnected() {
         cancelDimming()
@@ -44,6 +47,7 @@ class ScreenManager(private val context: Context) {
     }
 
     fun beginLowPowerTransition() {
+        displayPowerSavingActive = true
         releaseScreenWakeLock()
         if (PowerState.isPluggedIn(context)) {
             val intent = Intent(context, MainActivity::class.java).apply {
@@ -100,8 +104,22 @@ class ScreenManager(private val context: Context) {
 
     fun restoreBrightnessLevel(activity: Activity? = null) {
         cancelDimming()
+        displayPowerSavingActive = false
+        captureSystemBrightnessIfNeeded()
         lastSystemBrightness = -1
         applyBrightness(activity, 1f, forceSystemUpdate = true)
+    }
+
+    /** Restore pre-display system brightness when leaving the dashboard (settings, home, etc.). */
+    fun restoreUserBrightness(activity: Activity? = null) {
+        if (displayPowerSavingActive) return
+        cancelDimming()
+        activity?.let { clearWindowBrightnessOverride(it) }
+        val saved = savedSystemBrightness
+        if (saved != null && Settings.System.canWrite(context)) {
+            lastSystemBrightness = saved
+            setSystemBrightness(saved)
+        }
     }
 
     fun cancelDimming() {
@@ -200,6 +218,24 @@ class ScreenManager(private val context: Context) {
     fun setWindowBrightness(activity: Activity, brightness: Float) {
         val layoutParams = activity.window.attributes
         layoutParams.screenBrightness = brightness.coerceIn(0f, 1f)
+        activity.window.attributes = layoutParams
+    }
+
+    private fun captureSystemBrightnessIfNeeded() {
+        if (savedSystemBrightness != null || !Settings.System.canWrite(context)) return
+        try {
+            savedSystemBrightness = Settings.System.getInt(
+                context.contentResolver,
+                Settings.System.SCREEN_BRIGHTNESS,
+            )
+        } catch (exception: Settings.SettingNotFoundException) {
+            Log.w(TAG, "Could not read system brightness", exception)
+        }
+    }
+
+    private fun clearWindowBrightnessOverride(activity: Activity) {
+        val layoutParams = activity.window.attributes
+        layoutParams.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
         activity.window.attributes = layoutParams
     }
 

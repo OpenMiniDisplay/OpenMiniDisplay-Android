@@ -52,4 +52,11 @@ class PitchBlackActivity : ComponentActivity() {
             finish()
         }
     }
+
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations) {
+            screenManager.restoreUserBrightness(this)
+        }
+    }
 }

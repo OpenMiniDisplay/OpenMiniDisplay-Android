@@ -8,21 +8,12 @@ LISTEN_PORT="15180"
 APK_PATH="${ROOT_DIR}/app/build/outputs/apk/debug/app-debug.apk"
 CONTAINER_APK_PATH="/workspace/app/build/outputs/apk/debug/app-debug.apk"
 
-# https://github.com/Nigh/android-dev-docker — use container adb/gradle only; do not mix with host adb.
+# https://github.com/Nigh/android-dev-docker — adb and Gradle run in container only; do not use host adb.
 DOCKER_IMAGE="${ANDROID_DEV_IMAGE:-xianii/android-dev:latest}"
 
-ADB_INIT='
-ensure_adb_key() {
-    mkdir -p "$HOME/.adb"
-    chmod 700 "$HOME/.adb"
-    if [ ! -s "$HOME/.adb/adbkey" ]; then
-        adb keygen "$HOME/.adb/adbkey"
-        chmod 600 "$HOME/.adb/adbkey"
-        echo "==> New adb key in ~/.adb — authorize once on device (Always allow)."
-    fi
-    adb start-server >/dev/null 2>&1
+plugdev_gid() {
+    getent group plugdev 2>/dev/null | cut -d: -f3 || true
 }
-'
 
 ensure_cache_dirs() {
     mkdir -p "$HOME/.gradle" "$HOME/.android" "$HOME/.adb"
@@ -91,9 +82,22 @@ docker_run() {
     fi
     if [[ "$usb" -eq 1 ]]; then
         args+=(--device=/dev/bus/usb)
+        local plugdev
+        plugdev="$(plugdev_gid)"
+        if [[ -n "$plugdev" ]]; then
+            args+=(--group-add "$plugdev")
+        fi
     fi
     args+=("$DOCKER_IMAGE" "$@")
     "${args[@]}"
+}
+
+warn_adb_key_permissions() {
+    if [[ -e "$HOME/.adb/adbkey" && ! -r "$HOME/.adb/adbkey" ]]; then
+        echo "Warning: ~/.adb/adbkey is not readable (often root-owned from an old container run)." >&2
+        echo "Fix: sudo chown -R \"$(id -un):$(id -gn)\" \"$HOME/.adb\"" >&2
+        echo "Then remove the key and re-run ./scripts/dev.sh devices to regenerate inside the container." >&2
+    fi
 }
 
 setup_toolchain() {
@@ -102,26 +106,72 @@ setup_toolchain() {
 }
 
 adb_cmd() {
+    local mount_project=0
+    if [[ "${1:-}" == "--project" ]]; then
+        mount_project=1
+        shift
+    fi
+
     local -a adb_args=()
     if [[ -n "${ANDROID_SERIAL:-}" ]]; then
         adb_args=(-s "$ANDROID_SERIAL")
     fi
 
-    # shellcheck disable=SC2046
-    docker_run --usb bash -c "$ADB_INIT
+    warn_adb_key_permissions
+
+    local -a docker_extra=(--usb --user)
+    if [[ "$mount_project" -eq 1 ]]; then
+        docker_extra+=(--project "$ROOT_DIR")
+    fi
+
+    docker_run "${docker_extra[@]}" -- bash -c '
+ensure_adb_key() {
+    mkdir -p "$HOME/.adb"
+    chmod 700 "$HOME/.adb"
+    if [ ! -s "$HOME/.adb/adbkey" ]; then
+        adb keygen "$HOME/.adb/adbkey"
+        chmod 600 "$HOME/.adb/adbkey"
+        echo "==> New adb key in ~/.adb — authorize once on device (Always allow)."
+    fi
+}
 ensure_adb_key
-exec adb $(printf '%q ' "${adb_args[@]}" "$@")
-"
+adb start-server >/dev/null 2>&1
+exec adb "$@"
+' bash "${adb_args[@]}" "$@"
+}
+
+device_lines() {
+    adb_cmd devices 2>/dev/null | awk 'NR>1 && NF>0'
 }
 
 require_device() {
     setup_toolchain
 
+    local authorized unauthorized offline
+    authorized="$(device_lines | awk '$2=="device"{print $1}')"
+    unauthorized="$(device_lines | awk '$2=="unauthorized"{print $1}')"
+    offline="$(device_lines | awk '$2=="offline"{print $1}')"
+
+    if [[ -n "$unauthorized" ]]; then
+        echo "Device connected but unauthorized:" >&2
+        echo "$unauthorized" | sed 's/^/  /' >&2
+        echo "Unlock the phone and accept the USB debugging prompt (Always allow)." >&2
+        echo "If you mixed host adb with container adb, revoke USB debugging authorizations on the device and run ./scripts/dev.sh devices again." >&2
+        exit 1
+    fi
+
+    if [[ -n "$offline" ]]; then
+        echo "Device connected but offline:" >&2
+        echo "$offline" | sed 's/^/  /' >&2
+        exit 1
+    fi
+
     local count
-    count="$(adb_cmd devices | awk 'NR>1 && $2=="device"{print $1}' | wc -l | tr -d ' ')"
+    count="$(printf '%s\n' "$authorized" | sed '/^$/d' | wc -l | tr -d ' ')"
     if [[ "$count" == "0" ]]; then
-        echo "No authorized device found." >&2
+        echo "No authorized device found (container adb)." >&2
         echo "Connect a phone with USB debugging enabled, then run: ./scripts/dev.sh devices" >&2
+        echo "See docs/ANDROID_DEV_CONTAINER.md for Docker USB / image requirements." >&2
         exit 1
     fi
     if [[ "$count" != "1" && -z "${ANDROID_SERIAL:-}" ]]; then
@@ -132,10 +182,12 @@ require_device() {
 }
 
 docker_run_project() {
-    if [[ "${ANDROID_DEV_USER:-}" == "1" ]]; then
-        docker_run --user --project "$ROOT_DIR" -- "$@"
-    else
+    require_docker
+    # ponytail: default --user matches upstream android-dev-docker; ANDROID_DEV_ROOT=1 for legacy root
+    if [[ "${ANDROID_DEV_ROOT:-}" == "1" ]]; then
         docker_run --project "$ROOT_DIR" -- "$@"
+    else
+        docker_run --user --project "$ROOT_DIR" -- "$@"
     fi
 }
 

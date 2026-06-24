@@ -1,14 +1,14 @@
 package com.openminidisplay.display.model
 
 data class DisplayLayout(
-    val version: Int = 1,
+    val version: Int = 2,
     val pages: List<DisplayPage> = emptyList(),
 )
 
 data class DisplayPage(
     val id: String,
     val grid: GridSpec = GridSpec(),
-    val widgets: List<WidgetSlot> = emptyList(),
+    val cards: List<DisplayCard> = emptyList(),
 )
 
 data class GridSpec(
@@ -18,18 +18,37 @@ data class GridSpec(
     val padding: Int = 16,
 )
 
-data class WidgetSlot(
+interface GridPlaced {
+    val row: Int
+    val col: Int
+    val rowSpan: Int
+    val colSpan: Int
+}
+
+data class DisplayCard(
     val id: String,
-    val type: WidgetType,
-    val row: Int = 0,
-    val col: Int = 0,
-    val rowSpan: Int = 1,
-    val colSpan: Int = 1,
+    override val row: Int = 0,
+    override val col: Int = 0,
+    override val rowSpan: Int = 1,
+    override val colSpan: Int = 1,
+    val grid: GridSpec = GridSpec(),
+    val script: String? = null,
+    val components: List<ComponentSlot> = emptyList(),
+) : GridPlaced
+
+data class ComponentSlot(
+    val id: String,
+    val type: ComponentType,
+    override val row: Int = 0,
+    override val col: Int = 0,
+    override val rowSpan: Int = 1,
+    override val colSpan: Int = 1,
     val style: TextStyleKind = TextStyleKind.BODY,
     val label: String? = null,
-)
+    val defaultChecked: Boolean = false,
+) : GridPlaced
 
-enum class WidgetType {
+enum class ComponentType {
     TEXT,
     METRIC,
     PROGRESS,
@@ -37,10 +56,15 @@ enum class WidgetType {
     LINE,
     BAR,
     PIE,
+    BUTTON,
+    TOGGLE,
     ;
 
+    val isDisplayType: Boolean
+        get() = this != BUTTON && this != TOGGLE
+
     companion object {
-        fun fromRaw(raw: String): WidgetType? {
+        fun fromRaw(raw: String): ComponentType? {
             return when (raw.lowercase()) {
                 "text" -> TEXT
                 "metric" -> METRIC
@@ -49,6 +73,8 @@ enum class WidgetType {
                 "line" -> LINE
                 "bar" -> BAR
                 "pie" -> PIE
+                "button" -> BUTTON
+                "toggle" -> TOGGLE
                 else -> null
             }
         }
@@ -78,3 +104,22 @@ data class PieSlice(
     val label: String,
     val value: Float,
 )
+
+data class ComponentProps(
+    val label: String? = null,
+    val enabled: Boolean = true,
+    val checked: Boolean = false,
+)
+
+object DisplayKeys {
+    fun qualify(cardId: String, componentId: String): String = "$cardId:$componentId"
+
+    fun splitQualified(qualified: String): Pair<String, String>? {
+        val slash = qualified.indexOf('/')
+        if (slash <= 0 || slash >= qualified.lastIndex) return null
+        val cardId = qualified.substring(0, slash).trim()
+        val componentId = qualified.substring(slash + 1).trim()
+        if (cardId.isEmpty() || componentId.isEmpty()) return null
+        return cardId to componentId
+    }
+}

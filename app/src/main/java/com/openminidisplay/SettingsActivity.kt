@@ -14,6 +14,8 @@ import com.openminidisplay.ui.theme.OpenMiniDisplayTheme
 
 class SettingsActivity : ComponentActivity() {
 
+    private val screenManager get() = OpenMiniDisplayApp.screenManagerOf(this)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -33,5 +35,10 @@ class SettingsActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        screenManager.restoreUserBrightness(this)
     }
 }

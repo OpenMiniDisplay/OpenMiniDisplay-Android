@@ -21,7 +21,7 @@ fun Modifier.displayGestures(
     val view = LocalView.current
     return pointerInput(connectionState) {
         awaitEachGesture {
-            val down = awaitFirstDown(requireUnconsumed = false)
+            val down = awaitFirstDown(requireUnconsumed = true)
             val start = down.position
             val longPress = awaitLongPressOrCancellation(down.id)
             if (longPress != null) {

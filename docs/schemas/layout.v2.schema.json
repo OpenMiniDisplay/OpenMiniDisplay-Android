@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/OpenMiniDisplay/OpenMiniDisplay-Android/schemas/layout.v2.schema.json",
+  "title": "OpenMiniDisplay Layout v2",
+  "type": "object",
+  "required": ["pages"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 2,
+      "default": 2
+    },
+    "pages": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/page" }
+    }
+  },
+  "$defs": {
+    "grid": {
+      "type": "object",
+      "properties": {
+        "rows": { "type": "integer", "minimum": 1, "default": 1 },
+        "cols": { "type": "integer", "minimum": 1, "default": 1 },
+        "gap": { "type": "integer", "minimum": 0, "default": 8 },
+        "padding": { "type": "integer", "minimum": 0, "default": 16 }
+      },
+      "additionalProperties": false
+    },
+    "page": {
+      "type": "object",
+      "required": ["id", "cards"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "grid": { "$ref": "#/$defs/grid" },
+        "cards": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/card" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "card": {
+      "type": "object",
+      "required": ["id", "components"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "row": { "type": "integer", "minimum": 0, "default": 0 },
+        "col": { "type": "integer", "minimum": 0, "default": 0 },
+        "rowSpan": { "type": "integer", "minimum": 1, "default": 1 },
+        "colSpan": { "type": "integer", "minimum": 1, "default": 1 },
+        "grid": { "$ref": "#/$defs/grid" },
+        "script": { "type": "string" },
+        "components": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/component" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "component": {
+      "type": "object",
+      "required": ["id", "type", "row", "col"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": {
+          "type": "string",
+          "enum": ["text", "metric", "progress", "ring", "line", "bar", "pie", "button", "toggle"]
+        },
+        "row": { "type": "integer", "minimum": 0 },
+        "col": { "type": "integer", "minimum": 0 },
+        "rowSpan": { "type": "integer", "minimum": 1, "default": 1 },
+        "colSpan": { "type": "integer", "minimum": 1, "default": 1 },
+        "style": {
+          "type": "string",
+          "enum": ["headline", "body", "caption", "metric"],
+          "default": "body"
+        },
+        "label": { "type": "string" },
+        "checked": {
+          "type": "boolean",
+          "default": false,
+          "description": "Initial on-state for toggle components"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

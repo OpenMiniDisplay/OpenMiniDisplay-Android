@@ -11,8 +11,8 @@ usage() {
     cat <<EOF
 Usage: ./scripts/layout-test.sh [phone-ip]
 
-Push a sample multi-page LAYOUT, then loop SET updates for all widgets.
-Includes a single-widget page ("focus") to verify borderless full-screen rendering.
+Push a sample multi-page LAYOUT (schema v2), then loop SET updates for all components.
+Includes a single-component card page ("focus") to verify borderless full-screen rendering.
 
 Examples:
   ./scripts/layout-test.sh
@@ -34,7 +34,7 @@ resolve_phone_ip() {
 }
 
 read -r -d '' SAMPLE_LAYOUT <<'EOF' || true
-{"version":1,"pages":[{"id":"overview","grid":{"rows":3,"cols":4,"gap":8,"padding":16},"widgets":[{"id":"title","type":"text","row":0,"col":0,"colSpan":4,"style":"headline"},{"id":"subtitle","type":"text","row":1,"col":0,"colSpan":2,"style":"body"},{"id":"status","type":"text","row":1,"col":2,"colSpan":2,"style":"caption"},{"id":"progress","type":"progress","row":2,"col":0},{"id":"ring","type":"ring","row":2,"col":1},{"id":"line","type":"line","row":2,"col":2},{"id":"bar","type":"bar","row":2,"col":3}]},{"id":"focus","grid":{"rows":1,"cols":1,"gap":0,"padding":0},"widgets":[{"id":"metric","type":"metric","row":0,"col":0,"rowSpan":1,"colSpan":1,"style":"metric"}]},{"id":"charts","grid":{"rows":1,"cols":2,"gap":8,"padding":16},"widgets":[{"id":"pie","type":"pie","row":0,"col":0},{"id":"footer","type":"text","row":0,"col":1,"style":"caption"}]}]}
+{"version":2,"pages":[{"id":"overview","grid":{"rows":3,"cols":4,"gap":8,"padding":16},"cards":[{"id":"title","row":0,"col":0,"colSpan":4,"grid":{"rows":1,"cols":1,"gap":0,"padding":0},"components":[{"id":"title","type":"text","row":0,"col":0,"style":"headline"}]},{"id":"subtitle","row":1,"col":0,"colSpan":2,"grid":{"rows":1,"cols":1,"gap":0,"padding":0},"components":[{"id":"subtitle","type":"text","row":0,"col":0,"style":"body"}]},{"id":"status","row":1,"col":2,"colSpan":2,"grid":{"rows":1,"cols":1,"gap":0,"padding":0},"components":[{"id":"status","type":"text","row":0,"col":0,"style":"caption"}]},{"id":"progress","row":2,"col":0,"grid":{"rows":1,"cols":1,"gap":0,"padding":0},"components":[{"id":"progress","type":"progress","row":0,"col":0}]},{"id":"ring","row":2,"col":1,"grid":{"rows":1,"cols":1,"gap":0,"padding":0},"components":[{"id":"ring","type":"ring","row":0,"col":0}]},{"id":"line","row":2,"col":2,"grid":{"rows":1,"cols":1,"gap":0,"padding":0},"components":[{"id":"line","type":"line","row":0,"col":0}]},{"id":"bar","row":2,"col":3,"grid":{"rows":1,"cols":1,"gap":0,"padding":0},"components":[{"id":"bar","type":"bar","row":0,"col":0}]}]},{"id":"focus","grid":{"rows":1,"cols":1,"gap":0,"padding":0},"cards":[{"id":"metric","row":0,"col":0,"grid":{"rows":1,"cols":1,"gap":0,"padding":0},"components":[{"id":"metric","type":"metric","row":0,"col":0,"style":"metric"}]}]},{"id":"charts","grid":{"rows":1,"cols":2,"gap":8,"padding":16},"cards":[{"id":"pie","row":0,"col":0,"grid":{"rows":1,"cols":1,"gap":0,"padding":0},"components":[{"id":"pie","type":"pie","row":0,"col":0}]},{"id":"footer","row":0,"col":1,"grid":{"rows":1,"cols":1,"gap":0,"padding":0},"components":[{"id":"footer","type":"text","row":0,"col":0,"style":"caption"}]}]}]}
 EOF
 
 send_data_cycle() {
@@ -42,17 +42,17 @@ send_data_cycle() {
     local progress=$(( (cycle * 17) % 101 ))
     local ring=$(( (cycle * 23) % 101 ))
 
-    printf 'SET title OpenMiniDisplay #%s\n' "$cycle"
-    printf 'SET subtitle Layout-driven dashboard\n'
-    printf 'SET status Cycle %s running\n' "$cycle"
-    printf 'SET metric %s.%s C\n' "$((20 + cycle % 15))" "$((cycle % 10))"
-    printf 'SET progress %s\n' "$progress"
-    printf 'SET ring %s\n' "$ring"
-    printf 'SET line 10,18,14,26,22,34,28,40\n'
-    printf 'SET bar 6,14,10,22,16,28\n'
-    printf 'SET pie CPU:%s,MEM:%s,IO:%s,NET:%s\n' \
+    printf 'SET title/title OpenMiniDisplay #%s\n' "$cycle"
+    printf 'SET subtitle/subtitle Layout-driven dashboard\n'
+    printf 'SET status/status Cycle %s running\n' "$cycle"
+    printf 'SET metric/metric %s.%s C\n' "$((20 + cycle % 15))" "$((cycle % 10))"
+    printf 'SET progress/progress %s\n' "$progress"
+    printf 'SET ring/ring %s\n' "$ring"
+    printf 'SET line/line 10,18,14,26,22,34,28,40\n'
+    printf 'SET bar/bar 6,14,10,22,16,28\n'
+    printf 'SET pie/pie CPU:%s,MEM:%s,IO:%s,NET:%s\n' \
         "$((20 + cycle % 15))" "$((15 + cycle % 10))" "$((10 + cycle % 8))" "$((25 + cycle % 12))"
-    printf 'SET footer Port %s | swipe for pages\n' "$LISTEN_PORT"
+    printf 'SET footer/footer Port %s | swipe for pages\n' "$LISTEN_PORT"
     printf 'PING\n'
 }
 
@@ -76,7 +76,7 @@ main() {
         local cycle=1
         local page=0
         while true; do
-            echo "==> Cycle ${cycle}: updating widget data" >&2
+            echo "==> Cycle ${cycle}: updating component data" >&2
             send_data_cycle "$cycle"
             page=$(( (page + 1) % 3 ))
             echo "GOTO ${page}" >&2

@@ -18,6 +18,7 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.core.app.NotificationCompat
 import com.openminidisplay.display.protocol.DisplayCommandHandler
+import com.openminidisplay.script.CardScriptManager
 import com.openminidisplay.settings.AppPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -70,6 +71,7 @@ class RemoteDisplayService : Service() {
         acquireServiceWakeLock()
         acquireWifiLock()
         startForeground(NOTIFICATION_ID, buildNotification(ConnectionState.DISCONNECTED))
+        CardScriptManager.start(serviceScope)
         startListener()
         startHeartbeatMonitor()
         if (RuntimeState.connectionState.value == ConnectionState.DISCONNECTED) {
@@ -99,6 +101,7 @@ class RemoteDisplayService : Service() {
         releaseWifiLock()
         releaseServiceWakeLock()
         screenManager.releaseWakeLocks()
+        CardScriptManager.stopAll()
         serviceScope.cancel()
         super.onDestroy()
     }
@@ -296,6 +299,7 @@ class RemoteDisplayService : Service() {
 
         Log.i(TAG, "Entering battery deep idle: stopping listener and releasing wake locks")
         RuntimeState.setBatteryDeepIdle(true)
+        CardScriptManager.pauseAll()
         stopListener()
         releaseServiceWakeLock()
         releaseWifiLock()
@@ -306,6 +310,7 @@ class RemoteDisplayService : Service() {
         val wasDeepIdle = RuntimeState.batteryDeepIdle.value
         if (wasDeepIdle) {
             RuntimeState.setBatteryDeepIdle(false)
+            CardScriptManager.resumeAll()
             Log.i(TAG, "Woke from battery deep idle: listener restarted")
         }
 
