@@ -46,6 +46,15 @@ class ScreenManager(private val context: Context) {
         return connected || (pluggedIn && keepWhenPlugged)
     }
 
+    fun isDisplayPowerSavingActive(): Boolean = displayPowerSavingActive
+
+    /** Full display brightness on resume — not during plugged idle dim / pitch-black transition. */
+    fun shouldRestoreDisplayBrightness(): Boolean {
+        if (displayPowerSavingActive) return false
+        if (RuntimeState.connectionState.value == ConnectionState.CONNECTED) return true
+        return shouldKeepScreenOn()
+    }
+
     fun beginLowPowerTransition() {
         displayPowerSavingActive = true
         releaseScreenWakeLock()
