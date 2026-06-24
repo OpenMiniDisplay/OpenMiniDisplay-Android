@@ -102,7 +102,8 @@ Component types: `text`, `metric`, `progress`, `ring`, `line`, `bar`, `pie`, `bu
 
 Newline-terminated UTF-8 text over TCP.
 
-**External controller spec (normative for client authors):** [`docs/CONTROLLER_INTEGRATION.md`](docs/CONTROLLER_INTEGRATION.md)
+**External controller spec (normative for PC / cross-platform clients):** [`docs/CONTROLLER_INTEGRATION.md`](docs/CONTROLLER_INTEGRATION.md)  
+**Examples:** [`docs/examples/README.md`](docs/examples/README.md)
 
 | Command | Effect |
 |---------|--------|
@@ -140,7 +141,7 @@ Newline-terminated UTF-8 text over TCP.
 ```
 
 Per-component fields: `id`, `type`, `row`, `col`, `rowSpan`, `colSpan`, optional `style`, optional `label`, optional `checked` (toggle initial state).
-Optional per-card `script` (Lua source). v1 `widgets` layouts are **not** accepted.
+Optional per-card `script` (Lua source). Layout **v2 only** (`pages` → `cards` → `components`).
 
 ### Card Lua API (host-provided globals)
 
@@ -274,12 +275,14 @@ scripts/
 ├── card-script-test.sh
 └── connect-test.sh
 docs/
-├── CONTROLLER_INTEGRATION.md   # external controller / cross-platform agent spec
+├── CONTROLLER_INTEGRATION.md   # normative spec for PC / cross-platform controllers
 ├── ANDROID_DEV_CONTAINER.md    # Docker image USB adb requirements
-├── schemas/layout.v2.schema.json
-├── schemas/layout.v1.schema.json
-├── examples/reference_client.py
-└── examples/sample_card.lua
+├── examples/
+│   ├── README.md
+│   ├── reference_client.py
+│   ├── minimal_layout.json
+│   └── sample_card.lua
+└── schemas/layout.v2.schema.json
 LICENSE
 README.md
 AGENTS.md

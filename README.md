@@ -5,20 +5,34 @@ Turn an old Android phone (API 28+) into a low-power, remotely controlled smart 
 ## Features
 
 - Foreground TCP listener on port **15180** (`OPENMINIDISPLAY` / `PING` / `SET` / `LAYOUT` / `PATCH` / `GOTO`)
+- **Layout v2**: pages → cards → components (`text`, `metric`, charts, `button`, `toggle`)
+- Optional **per-card Lua scripts** (timers, HTTP, on-device IO events)
 - Layout-driven full-screen Compose UI (multi-page, infinite horizontal swipe when `pages > 1`)
 - Low-power mode: 60 s grace → 10 s smooth dim → pitch-black screen (no auto-lock)
 - Device scripts under `scripts/` for build, install, and protocol testing
 
-## Quick start
+## Quick start (device)
 
 ```bash
 ./scripts/dev.sh debug
 ./scripts/layout-test.sh
+./scripts/card-script-test.sh <phone-ip>
 ```
 
-See [AGENTS.md](AGENTS.md) for architecture, protocol, and contributor/agent guidelines.
+## Quick start (PC / controller app)
 
-**Building a controller on another platform?** See [docs/CONTROLLER_INTEGRATION.md](docs/CONTROLLER_INTEGRATION.md) (Protocol v1).
+**Normative integration spec:** [docs/CONTROLLER_INTEGRATION.md](docs/CONTROLLER_INTEGRATION.md)
+
+```bash
+# Same LAN as the phone
+python3 docs/examples/reference_client.py demo <display-ip>
+python3 docs/examples/reference_client.py push-layout <display-ip> \
+  --layout docs/examples/minimal_layout.json
+```
+
+More examples: [docs/examples/README.md](docs/examples/README.md)
+
+See [AGENTS.md](AGENTS.md) for architecture and contributor guidelines.
 
 ## License
 

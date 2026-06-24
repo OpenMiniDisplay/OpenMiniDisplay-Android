@@ -1,49 +1,129 @@
 # OpenMiniDisplay Controller Integration (Layout v2)
 
-**Audience:** Agents and developers building controllers on any platform (Python, Node.js, Go, desktop apps, Home Assistant, etc.).
+**Audience:** Developers building **PC, server, or embedded controllers** (Python, Node.js, Go, C#, Home Assistant, etc.) that drive an OpenMiniDisplay Android device over TCP.
 
-**Purpose:** Implement a TCP client that drives an OpenMiniDisplay Android device correctly.
+**Purpose:** Implement a TCP client for layout v2 (`pages` → `cards` → `components`), live data updates, paging, and optional per-card Lua scripts on the device.
 
 | Meta | Value |
 |------|-------|
-| Layout schema | **v2** (`pages[].cards[].components[]`) |
+| Layout schema | **v2 only** — [`layout.v2.schema.json`](schemas/layout.v2.schema.json) |
 | Transport port | **15180** |
 | Encoding | UTF-8 |
 | Framing | One command per line, terminated by `\n` |
 | Display app | OpenMiniDisplay Android (`minSdk 28`) |
 
-> **Normative keywords:** MUST, MUST NOT, SHOULD, MAY (RFC 2119 sense).
+> **Normative keywords:** MUST, MUST NOT, SHOULD, MAY (RFC 2119 sense).  
+> **Out of scope:** Layout v1 (`widgets`) is not supported.
 
 ---
 
-## 1. Agent quick start
+## 0. Device & network prerequisites
 
-Minimal integration loop:
+Before writing a PC client:
+
+| Requirement | Detail |
+|-------------|--------|
+| App installed | OpenMiniDisplay APK running; foreground service listening on **15180** |
+| Same network | Controller and phone on the same LAN (or routed path to device IP) |
+| Device IP | Phone Wi‑Fi settings, router DHCP list, or `adb shell ip route` during USB debug |
+| App visible once | User should open the app after install so the service starts; on battery, deep idle stops the listener until the user wakes the device |
+| Permissions | Display may prompt for notification / write-settings on first launch (brightness control) |
+
+**Smoke test from a PC (bash):**
+
+```bash
+printf 'OPENMINIDISPLAY\nPING\nSET title/title Hello from PC\n' | nc <display-ip> 15180
+```
+
+**Smoke test (Python, from this repo):**
+
+```bash
+python3 docs/examples/reference_client.py ping <display-ip>
+python3 docs/examples/reference_client.py demo <display-ip>
+```
+
+---
+
+## 1. PC controller quick start
+
+### 1.1 Three integration levels
+
+| Level | PC sends | Device does | Use when |
+|-------|----------|-------------|----------|
+| **A. Data only** | `OPENMINIDISPLAY` + `PING` + `SET card/comp …` | Uses built-in default layout | Fastest start; dashboard-style updates |
+| **B. Layout + data** | `LAYOUT {…}` then `SET …` + `PING` | Renders your structure; you own all values | Custom dashboards, charts, multi-page |
+| **C. Layout + Lua card** | `LAYOUT` with `script` on card(s), then **`PING` only** | Card script runs timers, HTTP, handles button/toggle on device | Autonomous widgets; PC is thin session keeper |
+
+### 1.2 Minimal session (every controller MUST)
 
 ```text
 1. TCP connect to <display-ip>:15180
-2. send "OPENMINIDISPLAY\n"
-3. every ≤2 s send "PING\n"
-4. send "SET cardId/componentId Hello\n" (and other SET commands)
-5. keep the socket open
+2. send "OPENMINIDISPLAY\n"          # wake + CONNECTED
+3. send "PING\n"                     # start heartbeat window
+4. send commands (SET / LAYOUT / …)
+5. send "PING\n" at least every 2 s while connected
+6. keep one socket open (new connection replaces the old one)
 ```
 
-Bash smoke test (same LAN):
+### 1.3 Python skeleton
 
-```bash
-printf 'OPENMINIDISPLAY\nPING\nSET title/title Hello\n' | nc <display-ip> 15180
+```python
+import json, socket, time
+
+HOST, PORT = "192.168.1.23", 15180
+PING_SEC = 2.0
+
+def send(sock, line: str) -> None:
+    sock.sendall((line.rstrip("\n") + "\n").encode("utf-8"))
+
+sock = socket.create_connection((HOST, PORT))
+send(sock, "OPENMINIDISPLAY")
+send(sock, "PING")
+
+# Level A: update default layout
+send(sock, "SET title/title Server Room")
+send(sock, "SET metric/metric 23.5")
+
+# Level B: push custom layout (single-line JSON)
+layout = json.load(open("minimal_layout.json", encoding="utf-8"))
+send(sock, "LAYOUT " + json.dumps(layout, separators=(",", ":"), ensure_ascii=False))
+send(sock, "PING")
+send(sock, "SET title/title Production")
+
+while True:
+    send(sock, "PING")
+    # … more SET commands …
+    time.sleep(PING_SEC)
 ```
 
-Reference implementations in this repo:
+### 1.4 What the PC controls vs the device
+
+| Concern | PC controller | Device (app / Lua) |
+|---------|---------------|-------------------|
+| Layout structure | `LAYOUT` / `PATCH` | Parses v2 JSON |
+| Display values | `SET card/comp value` | Updates UI |
+| Toggle label / checked / button enabled | Optional via Lua `set_prop` on device | `button` / `toggle` clicks → card `on_event` |
+| Timers, HTTP fetch, button logic | — | Card `script` (Luaj) |
+| Page navigation | `GOTO index\|pageId` | Animated pager |
+| Heartbeat / connected state | `PING` ≤ every 2 s | 5 s timeout → DISCONNECTED |
+
+There is **no TCP response body**. Success is inferred from an open socket and continued acceptance of commands.
+
+### 1.5 Repo artifacts
 
 | Artifact | Path |
 |----------|------|
-| Bash layout loop | `scripts/layout-test.sh` |
-| Bash Lua card demo | `scripts/card-script-test.sh` |
-| Bash connect test | `scripts/connect-test.sh` |
-| Python minimal client | `docs/examples/reference_client.py` |
+| **This spec** | `docs/CONTROLLER_INTEGRATION.md` |
+| Examples index | `docs/examples/README.md` |
+| Python reference client | `docs/examples/reference_client.py` |
+| Sample layout JSON | `docs/examples/minimal_layout.json` |
 | Sample Lua card script | `docs/examples/sample_card.lua` |
 | Layout JSON Schema | `docs/schemas/layout.v2.schema.json` |
+| Bash layout loop | `scripts/layout-test.sh` |
+| Bash widget SET loop | `scripts/widget-test.sh` |
+| Bash chart SET loop | `scripts/chart-test.sh` |
+| Bash Lua card demo | `scripts/card-script-test.sh` |
+| Bash connect test | `scripts/connect-test.sh` |
 
 ---
 
@@ -313,7 +393,26 @@ Controllers SHOULD design layouts knowing:
 | 2+ cards on page | Card chrome + page grid |
 | 2+ components in card | Inner grid inside card |
 
-### 5.6 Card Lua scripts (optional)
+### 5.6 Default on-device layout (data-only controllers)
+
+If you **do not** send `LAYOUT`, the app ships this structure. Use these `SET` paths:
+
+| Page `id` | Card `id` | Component `id` | Type | Example `SET` |
+|-----------|-----------|----------------|------|----------------|
+| `overview` | `title` | `title` | text | `SET title/title OpenMiniDisplay` |
+| `overview` | `subtitle` | `subtitle` | text | `SET subtitle/subtitle Room A` |
+| `overview` | `status` | `status` | text | `SET status/status Connected` |
+| `overview` | `progress` | `progress` | progress | `SET progress/progress 65` |
+| `overview` | `ring` | `ring` | ring | `SET ring/ring 72` |
+| `overview` | `line` | `line` | line | `SET line/line 10,20,15,30` |
+| `overview` | `bar` | `bar` | bar | `SET bar/bar 6,14,10,22` |
+| `focus` | `metric` | `metric` | metric | `SET metric/metric 23.5` |
+| `charts` | `pie` | `pie` | pie | `SET pie/pie CPU:30,MEM:25,IO:20` |
+| `charts` | `footer` | `footer` | text | `SET footer/footer Updated` |
+
+Navigate pages: `GOTO 0` (overview), `GOTO focus`, `GOTO 2`, etc.
+
+### 5.7 Card Lua scripts (optional)
 
 When a card includes a non-empty `script` field, the device runs it in **Luaj** (Lua 5.2 semantics) inside `RemoteDisplayService`.
 
@@ -344,9 +443,36 @@ When a card includes a non-empty `script` field, the device runs it in **Luaj** 
 | `button` | `on_event("btnId", "click")` |
 | `toggle` | `on_event("toggleId", "change", "true"\|"false")` |
 
-Scripts pause during **battery deep idle** and restart `on_init` on wake.
+**Embedding script from a PC client:** the `script` field is a JSON string. Escape with your language’s JSON encoder (newlines → `\n`):
 
-Example script: [`docs/examples/sample_card.lua`](examples/sample_card.lua). Integration test: `./scripts/card-script-test.sh`.
+```python
+import json
+from pathlib import Path
+
+script = Path("sample_card.lua").read_text(encoding="utf-8")
+card = {
+    "id": "demo",
+    "row": 0, "col": 0,
+    "grid": {"rows": 5, "cols": 1, "gap": 8, "padding": 8},
+    "script": script,
+    "components": [
+        {"id": "status", "type": "text", "row": 0, "col": 0, "style": "headline"},
+        {"id": "counter", "type": "metric", "row": 1, "col": 0},
+        {"id": "refresh", "type": "button", "row": 3, "col": 0, "label": "Refresh"},
+        {"id": "auto", "type": "toggle", "row": 4, "col": 0, "label": "Auto tick", "checked": True},
+    ],
+}
+layout = {"version": 2, "pages": [{"id": "script_demo", "grid": {"rows": 1, "cols": 1, "padding": 16}, "cards": [card]}]}
+send(sock, "LAYOUT " + json.dumps(layout, separators=(",", ":"), ensure_ascii=False))
+```
+
+After `LAYOUT`, send only `PING` — the script updates components locally (`set`, `every`, `http_get`). Re-sending the **same** layout restarts scripts (`on_init` runs again).
+
+Scripts pause during **battery deep idle** (on battery, disconnected, after low-power timeout) and restart on wake.
+
+Example script: [`docs/examples/sample_card.lua`](examples/sample_card.lua).  
+Bash test: `./scripts/card-script-test.sh <display-ip>`.  
+Python: `python3 docs/examples/reference_client.py ping <display-ip>` after pushing a scripted layout.
 
 ---
 
@@ -392,7 +518,7 @@ OpenMiniDisplayClient
 
 ## 8. Reference sessions
 
-### 8.1 Default layout — data only
+### 8.1 Default layout — data only (Level A)
 
 Display ships with a default 3-page layout. Controller only sends data:
 
@@ -405,7 +531,9 @@ SET progress/progress 65
 PING
 ```
 
-### 8.2 Custom layout + live data
+Or: `python3 docs/examples/reference_client.py demo <display-ip>`
+
+### 8.2 Custom layout + live data (Level B)
 
 ```text
 OPENMINIDISPLAY
@@ -416,6 +544,8 @@ SET cpu/cpu 72
 SET mem/mem 54
 PING
 ```
+
+Or: `python3 docs/examples/reference_client.py push-layout <display-ip> --layout docs/examples/minimal_layout.json`
 
 ### 8.3 Multi-page carousel
 
@@ -432,7 +562,7 @@ PING
 GOTO b
 ```
 
-### 8.4 Autonomous Lua card
+### 8.4 Autonomous Lua card (Level C)
 
 Push layout with `script` on a card, then only heartbeat — device updates UI locally:
 
@@ -444,7 +574,18 @@ PING
 …
 ```
 
-See `./scripts/card-script-test.sh` and `docs/examples/sample_card.lua`.
+See `docs/examples/sample_card.lua`, `./scripts/card-script-test.sh <display-ip>`, and §5.7.
+
+### 8.5 PATCH — update pages without full replace
+
+```text
+OPENMINIDISPLAY
+PATCH {"pages":[{"id":"overview","grid":{"rows":1,"cols":1,"padding":16},"cards":[{"id":"status","row":0,"col":0,"grid":{"rows":1,"cols":1,"padding":0},"components":[{"id":"status","type":"text","row":0,"col":0,"style":"headline"}]}]}]}
+PING
+SET status/status Patched page
+```
+
+`PATCH` merges by page `id`; card scripts on affected cards are restarted.
 
 ---
 
@@ -460,18 +601,17 @@ Before shipping a controller client, verify:
 - [ ] `LAYOUT` JSON is single-line UTF-8 with `"version":2`
 - [ ] After reconnect, layout + data are replayed
 - [ ] Handles display not responding (no ACK) without deadlock
-- [ ] Tested against `./scripts/layout-test.sh`, `./scripts/card-script-test.sh`, or `docs/examples/reference_client.py`
+- [ ] Tested with `docs/examples/reference_client.py` and/or `scripts/*-test.sh`
 
 ---
 
 ## 10. Versioning
 
-| Layout schema | Android app | Breaking changes |
-|---------------|-------------|------------------|
-| **v2** (cards + components + Lua) | ≥ 1.0 | Replaces v1 `widgets`; SET requires `/` path |
-| v1 (`widgets`) | — | **No longer accepted** |
+| Layout schema | Status |
+|---------------|--------|
+| **v2** (`pages` → `cards` → `components`, optional `script`) | **Current** — `version` ≥ 2 required |
 
-Future changes MUST increment layout `version` or this document. Controllers SHOULD ignore unknown JSON fields.
+Controllers MUST send `"version": 2` in layout JSON. Unknown JSON fields SHOULD be ignored by forward-compatible clients.
 
 ---
 
@@ -479,11 +619,16 @@ Future changes MUST increment layout `version` or this document. Controllers SHO
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
+| Connection refused | App not running / deep idle / wrong IP | Open app on device; wake from battery saver; verify IP |
 | Display dims after ~5 s | No `PING` / commands | Send heartbeat every ≤2 s |
-| Updates ignored | Not connected / wrong path | Send handshake first; use `cardId/componentId` from layout |
-| `LAYOUT` has no effect | Invalid JSON or empty pages | Validate against schema |
+| Updates ignored | Not connected / wrong path | Send `OPENMINIDISPLAY` first; use `cardId/componentId` from layout (see §5.6) |
+| `SET title Hello` fails | Missing `/` in path | Use `SET title/title Hello` |
+| `LAYOUT` has no effect | Invalid JSON, `version` < 2, or empty pages | Validate against `layout.v2.schema.json`; one line per command |
+| Lua card shows `--` | Script error or session dropped | Check logcat `CardScript`; resend `LAYOUT`; keep `PING` alive |
+| Button/toggle no script action | No `script` on card or wrong `on_event` id | Match component `id` in Lua; PC cannot inject clicks |
 | Connection drops when reconnecting | Single-client design | Close old socket before opening new one |
 | Cannot connect | Firewall / wrong IP | Same LAN; check device Wi‑Fi IP |
+| Works once then stops (battery) | Battery deep idle | User wakes device (open app); reconnect and resend `LAYOUT` + data |
 
 ---
 
