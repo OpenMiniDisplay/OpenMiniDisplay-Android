@@ -12,12 +12,12 @@ usage() {
     cat <<EOF
 Usage: ./scripts/widget-test.sh [phone-ip]
 
-Loop through all preset widgets and push sample content over TCP port ${LISTEN_PORT}.
-Keeps the session alive with periodic PING heartbeats.
+Loop through preset components and push sample content over TCP port ${LISTEN_PORT}.
+Uses v2 SET paths: cardId/componentId. Keeps the session alive with periodic PING heartbeats.
 
 Environment:
-  INTERVAL_SECONDS     Delay between widget updates (default: 2)
-  CYCLE_PAUSE_SECONDS  Pause before restarting the widget loop (default: 3)
+  INTERVAL_SECONDS     Delay between component updates (default: 2)
+  CYCLE_PAUSE_SECONDS  Pause before restarting the loop (default: 3)
 
 Examples:
   ./scripts/widget-test.sh
@@ -39,31 +39,31 @@ resolve_phone_ip() {
     echo "$ip"
 }
 
-declare -a WIDGET_SAMPLES=(
-    "title|OpenMiniDisplay Demo"
-    "subtitle|Preset widget refresh test"
-    "status|Running widget loop"
-    "metric|23.5 C"
-    "footer|Updated via SET command"
+declare -a COMPONENT_SAMPLES=(
+    "title/title|OpenMiniDisplay Demo"
+    "subtitle/subtitle|Preset component refresh test"
+    "status/status|Running component loop"
+    "metric/metric|23.5 C"
+    "footer/footer|Updated via SET command"
 )
 
-send_widget_updates() {
+send_component_updates() {
     local cycle="$1"
     local index=1
-    local total="${#WIDGET_SAMPLES[@]}"
+    local total="${#COMPONENT_SAMPLES[@]}"
 
-    echo "==> Cycle ${cycle}: refreshing ${total} preset widgets" >&2
+    echo "==> Cycle ${cycle}: refreshing ${total} preset components" >&2
 
-    for entry in "${WIDGET_SAMPLES[@]}"; do
-        local widget_id="${entry%%|*}"
+    for entry in "${COMPONENT_SAMPLES[@]}"; do
+        local component_path="${entry%%|*}"
         local sample_value="${entry#*|}"
         local timestamp
         timestamp="$(date +%H:%M:%S)"
         local payload="${sample_value} (#${cycle}.${index} @ ${timestamp})"
 
-        printf 'SET %s %s\n' "$widget_id" "$payload"
+        printf 'SET %s %s\n' "$component_path" "$payload"
         printf 'PING\n'
-        echo "-> SET ${widget_id} = ${payload}" >&2
+        echo "-> SET ${component_path} = ${payload}" >&2
         sleep "$INTERVAL_SECONDS"
         index=$((index + 1))
     done
@@ -78,7 +78,7 @@ main() {
     fi
 
     local phone_ip="${1:-$(resolve_phone_ip)}"
-    print_header "Streaming widget updates to ${phone_ip}:${LISTEN_PORT} (Ctrl+C to stop)"
+    print_header "Streaming component updates to ${phone_ip}:${LISTEN_PORT} (Ctrl+C to stop)"
 
     {
         echo "OPENMINIDISPLAY"
@@ -86,7 +86,7 @@ main() {
 
         local cycle=1
         while true; do
-            send_widget_updates "$cycle"
+            send_component_updates "$cycle"
             echo "PING"
             sleep "$CYCLE_PAUSE_SECONDS"
             cycle=$((cycle + 1))

@@ -1,4 +1,4 @@
-# OpenMiniDisplay Controller Integration (Protocol v1)
+# OpenMiniDisplay Controller Integration (Layout v2)
 
 **Audience:** Agents and developers building controllers on any platform (Python, Node.js, Go, desktop apps, Home Assistant, etc.).
 
@@ -6,7 +6,7 @@
 
 | Meta | Value |
 |------|-------|
-| Protocol version | **1** |
+| Layout schema | **v2** (`pages[].cards[].components[]`) |
 | Transport port | **15180** |
 | Encoding | UTF-8 |
 | Framing | One command per line, terminated by `\n` |
@@ -24,14 +24,14 @@ Minimal integration loop:
 1. TCP connect to <display-ip>:15180
 2. send "OPENMINIDISPLAY\n"
 3. every ≤2 s send "PING\n"
-4. send "SET title Hello\n" (and other SET commands)
+4. send "SET cardId/componentId Hello\n" (and other SET commands)
 5. keep the socket open
 ```
 
 Bash smoke test (same LAN):
 
 ```bash
-printf 'OPENMINIDISPLAY\nPING\nSET title Hello\n' | nc <display-ip> 15180
+printf 'OPENMINIDISPLAY\nPING\nSET title/title Hello\n' | nc <display-ip> 15180
 ```
 
 Reference implementations in this repo:
@@ -39,9 +39,11 @@ Reference implementations in this repo:
 | Artifact | Path |
 |----------|------|
 | Bash layout loop | `scripts/layout-test.sh` |
+| Bash Lua card demo | `scripts/card-script-test.sh` |
 | Bash connect test | `scripts/connect-test.sh` |
 | Python minimal client | `docs/examples/reference_client.py` |
-| Layout JSON Schema | `docs/schemas/layout.v1.schema.json` |
+| Sample Lua card script | `docs/examples/sample_card.lua` |
+| Layout JSON Schema | `docs/schemas/layout.v2.schema.json` |
 
 ---
 
@@ -104,11 +106,13 @@ line        := command LF
 command     := handshake | heartbeat | set | layout | patch | goto
 handshake   := "OPENMINIDISPLAY" | "CONNECT" [suffix]
 heartbeat   := "PING" [suffix]
-set         := "SET" SP widget-id SP value
+set         := "SET" SP component-path SP value
 layout      := "LAYOUT" SP json-object
 patch       := "PATCH" SP json-object
 goto        := "GOTO" SP target
-widget-id   := non-empty token without leading/trailing spaces in id segment
+component-path := card-id "/" component-id
+card-id     := non-empty token without "/"
+component-id := non-empty token without "/"
 value       := any UTF-8 text (may contain spaces)
 target      := page-index | page-id
 page-index  := decimal integer (0-based)
@@ -144,27 +148,29 @@ Example:
 PING
 ```
 
-### 4.4 SET (widget data)
+### 4.4 SET (component data)
 
 ```text
-SET <widgetId> <value>
+SET <cardId>/<componentId> <value>
 ```
 
-- **First ASCII space** after `SET` separates `widgetId` from `value`.
+- Target MUST contain **`/`** separating card id from component id.
+- **First ASCII space** after `SET` separates path from `value`.
 - **Everything after the first space** (trimmed) is `value`, including embedded spaces.
 
 | Send | Display effect |
 |------|----------------|
-| `SET cpu 72.5` | Updates widget `cpu` if type resolves |
+| `SET weather/temp 23.5` | Updates component `temp` in card `weather` |
+| Path without `/` | Rejected (logged, no update) |
 | Invalid / blank value | Ignored (no error reply) |
 
 Examples:
 
 ```text
-SET title Hello World
-SET progress 72
-SET line 10,20,15,30,25
-SET pie CPU:30,MEM:25,IO:20,NET:25
+SET title/title Hello World
+SET dash/cpu 72
+SET dash/line 10,20,15,30,25
+SET dash/pie CPU:30,MEM:25,IO:20,NET:25
 ```
 
 ### 4.5 LAYOUT (replace structure)
@@ -179,8 +185,8 @@ LAYOUT <json>
 
 | Send | Display effect |
 |------|----------------|
-| Valid layout JSON | Pages/grid/widgets replaced; page index clamped |
-| Invalid JSON / empty pages | Ignored |
+| Valid layout JSON | Pages/grid/cards replaced; page index clamped; card scripts restarted |
+| Invalid JSON / empty pages / version < 2 | Ignored |
 
 ### 4.6 PATCH (merge pages)
 
@@ -207,24 +213,24 @@ Only meaningful when layout has **2+ pages**. With 1 page, display does not enab
 
 ---
 
-## 5. Layout schema (structure)
+## 5. Layout schema v2 (structure)
 
-Layout describes **where** widgets are placed. Values come from **`SET`**, not from layout JSON.
+Layout describes **where** cards and components are placed. Display values come from **`SET`** and/or **card Lua scripts** (not from layout JSON).
 
-Validate with: [`docs/schemas/layout.v1.schema.json`](schemas/layout.v1.schema.json)
+Validate with: [`docs/schemas/layout.v2.schema.json`](schemas/layout.v2.schema.json)
 
 ### 5.1 Top-level object
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "pages": [ { "...": "..." } ]
 }
 ```
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `version` | No (default `1`) | Schema version |
+| `version` | **Yes** (must be ≥ 2) | Schema version |
 | `pages` | **Yes** | Non-empty array of pages |
 
 ### 5.2 Page object
@@ -233,7 +239,7 @@ Validate with: [`docs/schemas/layout.v1.schema.json`](schemas/layout.v1.schema.j
 {
   "id": "overview",
   "grid": { "rows": 3, "cols": 4, "gap": 8, "padding": 16 },
-  "widgets": [ { "...": "..." } ]
+  "cards": [ { "...": "..." } ]
 }
 ```
 
@@ -244,7 +250,31 @@ Validate with: [`docs/schemas/layout.v1.schema.json`](schemas/layout.v1.schema.j
 | `grid.gap` | `8` | Gap dp between cells |
 | `grid.padding` | `16` | Page padding dp |
 
-### 5.3 Widget object
+### 5.3 Card object
+
+```json
+{
+  "id": "weather",
+  "row": 0,
+  "col": 0,
+  "rowSpan": 1,
+  "colSpan": 1,
+  "grid": { "rows": 3, "cols": 1, "gap": 4, "padding": 8 },
+  "script": "function on_init() set('temp','--') end",
+  "components": [ { "...": "..." } ]
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `id` | Yes | Card id; used in `SET` path prefix |
+| `row`, `col` | No (default `0`) | Page grid placement |
+| `rowSpan`, `colSpan` | No (default `1`) | Page grid span |
+| `grid` | No | Inner grid for components |
+| `script` | No | Lua source; enables autonomous card runtime |
+| `components` | **Yes** | Non-empty component list |
+
+### 5.4 Component object
 
 ```json
 {
@@ -261,14 +291,15 @@ Validate with: [`docs/schemas/layout.v1.schema.json`](schemas/layout.v1.schema.j
 
 | Field | Required | Values |
 |-------|----------|--------|
-| `id` | Yes | Unique string; used in `SET` |
-| `type` | Yes | `text`, `metric`, `progress`, `ring`, `line`, `bar`, `pie` |
-| `row`, `col` | Yes | 0-based grid origin |
+| `id` | Yes | Used in `SET` as `<cardId>/<componentId>` |
+| `type` | Yes | `text`, `metric`, `progress`, `ring`, `line`, `bar`, `pie`, `button`, `toggle` |
+| `row`, `col` | Yes | 0-based inner grid origin |
 | `rowSpan`, `colSpan` | No (default `1`) | Cell span |
 | `style` | No | `headline`, `body`, `caption`, `metric` |
-| `label` | No | Chart label (defaults to `id`) |
+| `label` | No | Default label for charts / button / toggle |
+| `checked` | No | Initial on-state for `toggle` (default `false`) |
 
-### 5.4 Display rendering rules (for layout authors)
+### 5.5 Display rendering rules (for layout authors)
 
 Controllers SHOULD design layouts knowing:
 
@@ -278,14 +309,50 @@ Controllers SHOULD design layouts knowing:
 | Vertical scroll | **Not supported** — content clips |
 | 1 page | No horizontal swipe |
 | 2+ pages | Infinite horizontal swipe + page dots |
-| 1 widget on page | **Borderless** full-screen widget |
-| 2+ widgets on page | Card chrome + grid |
+| 1 card on page, 1 component in card | **Borderless** full-screen |
+| 2+ cards on page | Card chrome + page grid |
+| 2+ components in card | Inner grid inside card |
+
+### 5.6 Card Lua scripts (optional)
+
+When a card includes a non-empty `script` field, the device runs it in **Luaj** (Lua 5.2 semantics) inside `RemoteDisplayService`.
+
+**Lifecycle functions** (implement in script; host calls):
+
+| Function | When |
+|----------|------|
+| `on_init()` | Card loaded / layout updated / resume from battery deep idle |
+| `on_timer(name)` | After `every(seconds, name)` |
+| `on_event(id, event, value?)` | IO component interaction |
+| `on_destroy()` | Card unloaded / service stop |
+
+**Host globals:**
+
+| Function | Description |
+|----------|-------------|
+| `set(id, value)` | Update display component in this card |
+| `set_prop(id, key, val)` | `label`, `enabled`, or `checked` |
+| `every(sec, name)` | Start repeating timer |
+| `cancel(name)` | Stop timer |
+| `http_get(url, fn)` | Async GET; `fn(status, body_table_or_nil, err_string)` |
+| `log(msg)` | Logcat |
+
+**IO events:**
+
+| Component | `on_event` |
+|-----------|------------|
+| `button` | `on_event("btnId", "click")` |
+| `toggle` | `on_event("toggleId", "change", "true"\|"false")` |
+
+Scripts pause during **battery deep idle** and restart `on_init` on wake.
+
+Example script: [`docs/examples/sample_card.lua`](examples/sample_card.lua). Integration test: `./scripts/card-script-test.sh`.
 
 ---
 
 ## 6. Data formats (`SET` values)
 
-Widget type is taken from **current layout** for that `id`. If not in layout, type is inferred from id name (`progress`, `ring`, `line`, `bar`, `pie`, `metric`, else `text`).
+Widget type is taken from **current layout** for that `cardId/componentId`. If not in layout, type is inferred from component id name.
 
 | Type | Value format | Parsing |
 |------|--------------|---------|
@@ -293,6 +360,7 @@ Widget type is taken from **current layout** for that `id`. If not in layout, ty
 | `progress`, `ring` | Number 0–100 | Optional `%` suffix; clamped 0–100 |
 | `line`, `bar` | Comma-separated floats | `10, 20.5, 3` |
 | `pie` | `label:value` pairs OR comma numbers | `CPU:30,MEM:70` or `30,70` → S1, S2… |
+| `button`, `toggle` | Ignored for display value | Use `set_prop` from Lua or toggle UI |
 
 ---
 
@@ -304,7 +372,7 @@ OpenMiniDisplayClient
 ├── HeartbeatScheduler   # interval ≤ 2 s → PING
 ├── CommandWriter        # send_line(cmd) with UTF-8 + \n
 ├── LayoutStore          # optional local copy of last LAYOUT
-└── DataCache            # widgetId → last SET value (for reconnect replay)
+└── DataCache            # card/comp path → last SET value (for reconnect replay)
 ```
 
 ### 7.1 Reconnect strategy (SHOULD)
@@ -331,9 +399,9 @@ Display ships with a default 3-page layout. Controller only sends data:
 ```text
 OPENMINIDISPLAY
 PING
-SET title Server Room
-SET metric 23.5 C
-SET progress 65
+SET title/title Server Room
+SET metric/metric 23.5 C
+SET progress/progress 65
 PING
 ```
 
@@ -341,11 +409,11 @@ PING
 
 ```text
 OPENMINIDISPLAY
-LAYOUT {"version":1,"pages":[{"id":"dash","grid":{"rows":2,"cols":2,"gap":8,"padding":16},"widgets":[{"id":"title","type":"text","row":0,"col":0,"colSpan":2,"style":"headline"},{"id":"cpu","type":"ring","row":1,"col":0},{"id":"mem","type":"progress","row":1,"col":1}]}]}
+LAYOUT {"version":2,"pages":[{"id":"dash","grid":{"rows":2,"cols":2,"gap":8,"padding":16},"cards":[{"id":"title","row":0,"col":0,"colSpan":2,"grid":{"rows":1,"cols":1,"padding":0},"components":[{"id":"title","type":"text","row":0,"col":0,"style":"headline"}]},{"id":"cpu","row":1,"col":0,"grid":{"rows":1,"cols":1,"padding":0},"components":[{"id":"cpu","type":"ring","row":0,"col":0}]},{"id":"mem","row":1,"col":1,"grid":{"rows":1,"cols":1,"padding":0},"components":[{"id":"mem","type":"progress","row":0,"col":0}]}]}]}
 PING
-SET title Production
-SET cpu 72
-SET mem 54
+SET title/title Production
+SET cpu/cpu 72
+SET mem/mem 54
 PING
 ```
 
@@ -353,16 +421,30 @@ PING
 
 ```text
 OPENMINIDISPLAY
-LAYOUT {"version":1,"pages":[{"id":"a","grid":{"rows":1,"cols":1,"padding":0},"widgets":[{"id":"metric","type":"metric","row":0,"col":0,"style":"metric"}]},{"id":"b","grid":{"rows":1,"cols":1,"padding":0},"widgets":[{"id":"status","type":"text","row":0,"col":0,"style":"headline"}]}]}
+LAYOUT {"version":2,"pages":[{"id":"a","grid":{"rows":1,"cols":1,"padding":0},"cards":[{"id":"metric","row":0,"col":0,"grid":{"rows":1,"cols":1,"padding":0},"components":[{"id":"metric","type":"metric","row":0,"col":0,"style":"metric"}]}]},{"id":"b","grid":{"rows":1,"cols":1,"padding":0},"cards":[{"id":"status","row":0,"col":0,"grid":{"rows":1,"cols":1,"padding":0},"components":[{"id":"status","type":"text","row":0,"col":0,"style":"headline"}]}]}]}
 PING
-SET metric 100%
-SET status All systems go
+SET metric/metric 100%
+SET status/status All systems go
 GOTO 0
 PING
 GOTO 1
 PING
 GOTO b
 ```
+
+### 8.4 Autonomous Lua card
+
+Push layout with `script` on a card, then only heartbeat — device updates UI locally:
+
+```text
+OPENMINIDISPLAY
+LAYOUT …
+PING
+PING
+…
+```
+
+See `./scripts/card-script-test.sh` and `docs/examples/sample_card.lua`.
 
 ---
 
@@ -373,21 +455,23 @@ Before shipping a controller client, verify:
 - [ ] Connects to port **15180**
 - [ ] Sends `OPENMINIDISPLAY` immediately after TCP connect
 - [ ] Sends `PING` at least every **2 s** while connected
-- [ ] `SET` with spaces in value works (`SET title Hello World`)
-- [ ] `LAYOUT` JSON is single-line UTF-8
+- [ ] `SET` uses `cardId/componentId` paths
+- [ ] `SET` with spaces in value works (`SET title/title Hello World`)
+- [ ] `LAYOUT` JSON is single-line UTF-8 with `"version":2`
 - [ ] After reconnect, layout + data are replayed
 - [ ] Handles display not responding (no ACK) without deadlock
-- [ ] Tested against `./scripts/layout-test.sh` or `docs/examples/reference_client.py`
+- [ ] Tested against `./scripts/layout-test.sh`, `./scripts/card-script-test.sh`, or `docs/examples/reference_client.py`
 
 ---
 
 ## 10. Versioning
 
-| Protocol v1 | Android app | Breaking changes |
-|-------------|-------------|------------------|
-| Initial | ≥ 1.0 | — |
+| Layout schema | Android app | Breaking changes |
+|---------------|-------------|------------------|
+| **v2** (cards + components + Lua) | ≥ 1.0 | Replaces v1 `widgets`; SET requires `/` path |
+| v1 (`widgets`) | — | **No longer accepted** |
 
-Future changes MUST increment layout `version` or this document's protocol version. Controllers SHOULD ignore unknown JSON fields.
+Future changes MUST increment layout `version` or this document. Controllers SHOULD ignore unknown JSON fields.
 
 ---
 
@@ -396,7 +480,7 @@ Future changes MUST increment layout `version` or this document's protocol versi
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | Display dims after ~5 s | No `PING` / commands | Send heartbeat every ≤2 s |
-| Updates ignored | Not connected / wrong id | Send handshake first; match widget `id` in layout |
+| Updates ignored | Not connected / wrong path | Send handshake first; use `cardId/componentId` from layout |
 | `LAYOUT` has no effect | Invalid JSON or empty pages | Validate against schema |
 | Connection drops when reconnecting | Single-client design | Close old socket before opening new one |
 | Cannot connect | Firewall / wrong IP | Same LAN; check device Wi‑Fi IP |

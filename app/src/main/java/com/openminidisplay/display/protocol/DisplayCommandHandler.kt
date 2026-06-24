@@ -1,9 +1,8 @@
 package com.openminidisplay.display.protocol
 
 import android.util.Log
-import com.openminidisplay.display.repo.DisplayDataRepository
-import com.openminidisplay.display.repo.DisplayLayoutRepository
-import com.openminidisplay.display.repo.DisplayNavigationRepository
+import com.openminidisplay.display.DisplayStore
+import com.openminidisplay.script.CardScriptManager
 
 object DisplayCommandHandler {
     private const val TAG = "DisplayCommandHandler"
@@ -26,13 +25,18 @@ object DisplayCommandHandler {
         val separatorIndex = payload.indexOf(' ')
         if (separatorIndex <= 0) return false
 
-        val widgetId = payload.substring(0, separatorIndex).trim()
+        val target = payload.substring(0, separatorIndex).trim()
         val content = payload.substring(separatorIndex + 1).trim()
-        if (widgetId.isEmpty() || content.isEmpty()) return false
+        if (target.isEmpty() || content.isEmpty()) return false
 
-        val updated = DisplayDataRepository.setRaw(widgetId, content)
+        if (!target.contains('/')) {
+            Log.w(TAG, "SET target must use card/component path: $target")
+            return false
+        }
+
+        val updated = DisplayStore.setRawQualified(target, content)
         if (!updated) {
-            Log.w(TAG, "Failed to update widget '$widgetId'")
+            Log.w(TAG, "Failed to update component '$target'")
         }
         return updated
     }
@@ -44,8 +48,9 @@ object DisplayCommandHandler {
             Log.w(TAG, "Invalid LAYOUT payload")
             return false
         }
-        DisplayLayoutRepository.replace(layout)
-        DisplayNavigationRepository.clampToLayout(layout)
+        DisplayStore.replaceLayout(layout)
+        DisplayStore.clampPageToLayout(layout)
+        CardScriptManager.syncLayout(layout)
         Log.i(TAG, "Layout replaced with ${layout.pages.size} page(s)")
         return true
     }
@@ -57,8 +62,10 @@ object DisplayCommandHandler {
             Log.w(TAG, "Invalid PATCH payload")
             return false
         }
-        DisplayLayoutRepository.patchPages(pages)
-        DisplayNavigationRepository.clampToLayout(DisplayLayoutRepository.layout.value)
+        DisplayStore.patchPages(pages)
+        val layout = DisplayStore.layout.value
+        DisplayStore.clampPageToLayout(layout)
+        CardScriptManager.syncLayout(layout)
         Log.i(TAG, "Layout patched with ${pages.size} page(s)")
         return true
     }
@@ -66,12 +73,12 @@ object DisplayCommandHandler {
     private fun handleGoto(message: String): Boolean {
         val target = message.drop(5).trim()
         if (target.isEmpty()) return false
-        val layout = DisplayLayoutRepository.layout.value
+        val layout = DisplayStore.layout.value
         target.toIntOrNull()?.let { index ->
-            DisplayNavigationRepository.goTo(index, layout)
+            DisplayStore.goTo(index, layout)
             return true
         }
-        DisplayNavigationRepository.goToPageId(target, layout)
+        DisplayStore.goToPageId(target, layout)
         return true
     }
 }

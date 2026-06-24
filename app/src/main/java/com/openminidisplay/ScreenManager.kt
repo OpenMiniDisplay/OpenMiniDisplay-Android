@@ -7,7 +7,9 @@ import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import android.util.Log
 import android.view.WindowManager
+import com.openminidisplay.settings.AppPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -23,6 +25,8 @@ class ScreenManager(private val context: Context) {
     private var screenWakeLock: PowerManager.WakeLock? = null
     private var dimJob: Job? = null
     private var lastSystemBrightness = -1
+    private var savedSystemBrightness: Int? = null
+    private var displayPowerSavingActive = false
 
     fun onConnected() {
         cancelDimming()
@@ -31,34 +35,65 @@ class ScreenManager(private val context: Context) {
         navigateToDashboard()
     }
 
-    fun beginLowPowerTransition() {
+    fun onDisconnected() {
         releaseScreenWakeLock()
-        val intent = Intent(context, MainActivity::class.java).apply {
-            action = ACTION_BEGIN_LOW_POWER
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                Intent.FLAG_ACTIVITY_SINGLE_TOP
+    }
+
+    fun shouldKeepScreenOn(): Boolean {
+        val connected = RuntimeState.connectionState.value == ConnectionState.CONNECTED
+        val pluggedIn = RuntimeState.isPluggedIn.value
+        val keepWhenPlugged = AppPreferences.keepScreenOnWhenPlugged()
+        return connected || (pluggedIn && keepWhenPlugged)
+    }
+
+    fun beginLowPowerTransition() {
+        displayPowerSavingActive = true
+        releaseScreenWakeLock()
+        if (PowerState.isPluggedIn(context)) {
+            val intent = Intent(context, MainActivity::class.java).apply {
+                action = ACTION_BEGIN_LOW_POWER
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+            }
+            context.startActivity(intent)
+        } else {
+            enterBatteryLowPower()
         }
-        context.startActivity(intent)
+    }
+
+    fun enterBatteryLowPower() {
+        cancelDimming()
+        releaseScreenWakeLock()
+        val intent = Intent(context, RemoteDisplayService::class.java).apply {
+            action = RemoteDisplayService.ACTION_BATTERY_DEEP_IDLE
+        }
+        context.startService(intent)
     }
 
     fun showPitchBlackScreen() {
+        if (!PowerState.isPluggedIn(context)) return
         navigateToPitchBlack()
     }
 
     fun startGradualDim(activity: Activity, onComplete: () -> Unit = {}) {
+        if (!shouldKeepScreenOn()) {
+            onComplete()
+            return
+        }
         configurePreventLock(activity)
         dimJob?.cancel()
         dimJob = mainScope.launch {
-            val startBrightness = ScreenBrightnessState.level.value.coerceIn(0f, 1f)
+            val startBrightness = RuntimeState.brightness.value.coerceIn(0f, 1f)
             val startTimeMs = System.currentTimeMillis()
+            val durationMs = AppPreferences.gradualDimMs()
             while (true) {
                 val elapsed = System.currentTimeMillis() - startTimeMs
-                if (elapsed >= GRADUAL_DIM_DURATION_MS) {
+                if (elapsed >= durationMs) {
                     applyBrightness(activity, 0f, forceSystemUpdate = true)
                     break
                 }
-                val progress = elapsed.toFloat() / GRADUAL_DIM_DURATION_MS
+                val progress = elapsed.toFloat() / durationMs
                 val fraction = startBrightness * (1f - progress)
                 applyBrightness(activity, fraction)
                 delay(FRAME_DELAY_MS)
@@ -69,8 +104,22 @@ class ScreenManager(private val context: Context) {
 
     fun restoreBrightnessLevel(activity: Activity? = null) {
         cancelDimming()
+        displayPowerSavingActive = false
+        captureSystemBrightnessIfNeeded()
         lastSystemBrightness = -1
         applyBrightness(activity, 1f, forceSystemUpdate = true)
+    }
+
+    /** Restore pre-display system brightness when leaving the dashboard (settings, home, etc.). */
+    fun restoreUserBrightness(activity: Activity? = null) {
+        if (displayPowerSavingActive) return
+        cancelDimming()
+        activity?.let { clearWindowBrightnessOverride(it) }
+        val saved = savedSystemBrightness
+        if (saved != null && Settings.System.canWrite(context)) {
+            lastSystemBrightness = saved
+            setSystemBrightness(saved)
+        }
     }
 
     fun cancelDimming() {
@@ -78,10 +127,9 @@ class ScreenManager(private val context: Context) {
         dimJob = null
     }
 
-    fun release() {
+    fun releaseWakeLocks() {
         cancelDimming()
         releaseScreenWakeLock()
-        mainScope.cancel()
     }
 
     fun configurePreventLock(activity: Activity) {
@@ -89,6 +137,24 @@ class ScreenManager(private val context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             activity.setShowWhenLocked(true)
             activity.setTurnScreenOn(true)
+        }
+    }
+
+    fun configureAllowLock(activity: Activity) {
+        activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            activity.setShowWhenLocked(false)
+            activity.setTurnScreenOn(false)
+        }
+    }
+
+    fun applyScreenPolicy(activity: Activity) {
+        if (shouldKeepScreenOn()) {
+            configurePreventLock(activity)
+            keepScreenOn(activity, enabled = true)
+        } else {
+            configureAllowLock(activity)
+            keepScreenOn(activity, enabled = false)
         }
     }
 
@@ -102,7 +168,7 @@ class ScreenManager(private val context: Context) {
         forceSystemUpdate: Boolean = false,
     ) {
         val clamped = fraction.coerceIn(0f, 1f)
-        ScreenBrightnessState.update(clamped)
+        RuntimeState.setBrightness(clamped)
         activity?.let { setWindowBrightness(it, clamped) }
         val systemLevel = (MIN_BRIGHTNESS + (MAX_BRIGHTNESS - MIN_BRIGHTNESS) * clamped).toInt()
         if (forceSystemUpdate || systemLevel != lastSystemBrightness) {
@@ -152,6 +218,24 @@ class ScreenManager(private val context: Context) {
     fun setWindowBrightness(activity: Activity, brightness: Float) {
         val layoutParams = activity.window.attributes
         layoutParams.screenBrightness = brightness.coerceIn(0f, 1f)
+        activity.window.attributes = layoutParams
+    }
+
+    private fun captureSystemBrightnessIfNeeded() {
+        if (savedSystemBrightness != null || !Settings.System.canWrite(context)) return
+        try {
+            savedSystemBrightness = Settings.System.getInt(
+                context.contentResolver,
+                Settings.System.SCREEN_BRIGHTNESS,
+            )
+        } catch (exception: Settings.SettingNotFoundException) {
+            Log.w(TAG, "Could not read system brightness", exception)
+        }
+    }
+
+    private fun clearWindowBrightnessOverride(activity: Activity) {
+        val layoutParams = activity.window.attributes
+        layoutParams.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
         activity.window.attributes = layoutParams
     }
 

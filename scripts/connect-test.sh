@@ -28,9 +28,17 @@ resolve_phone_ip() {
 }
 
 main() {
-    require_device
+    local phone_ip="${1:-}"
 
-    local phone_ip="${1:-$(resolve_phone_ip)}"
+    if [[ -z "$phone_ip" ]]; then
+        require_device
+        phone_ip="$(resolve_phone_ip)"
+    elif [[ ! "$phone_ip" =~ ^[0-9.]+$ ]]; then
+        echo "Invalid phone IP: $phone_ip" >&2
+        usage
+        exit 1
+    fi
+
     print_header "Testing TCP handshake to ${phone_ip}:${LISTEN_PORT}"
 
     if ! command -v nc >/dev/null 2>&1; then

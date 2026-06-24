@@ -17,15 +17,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 class PitchBlackActivity : ComponentActivity() {
 
-    private lateinit var screenManager: ScreenManager
+    private val screenManager get() = OpenMiniDisplayApp.screenManagerOf(this)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        screenManager = ScreenManager(applicationContext)
-        screenManager.configurePreventLock(this)
+        screenManager.applyScreenPolicy(this)
 
         setContent {
-            val brightness by ScreenBrightnessState.level.collectAsStateWithLifecycle()
+            val brightness by RuntimeState.brightness.collectAsStateWithLifecycle()
 
             LaunchedEffect(brightness) {
                 screenManager.applyBrightnessToActivity(this@PitchBlackActivity, brightness)
@@ -47,6 +46,17 @@ class PitchBlackActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        screenManager.configurePreventLock(this)
+        if (screenManager.shouldKeepScreenOn()) {
+            screenManager.configurePreventLock(this)
+        } else {
+            finish()
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations) {
+            screenManager.restoreUserBrightness(this)
+        }
     }
 }
