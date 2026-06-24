@@ -1,9 +1,11 @@
 package com.openminidisplay.display
 
+import com.openminidisplay.display.model.ComponentProps
+import com.openminidisplay.display.model.ComponentType
+import com.openminidisplay.display.model.DisplayKeys
 import com.openminidisplay.display.model.DisplayLayout
 import com.openminidisplay.display.model.DisplayPage
 import com.openminidisplay.display.model.PieSlice
-import com.openminidisplay.display.model.WidgetType
 import com.openminidisplay.display.model.WidgetValue
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,6 +18,9 @@ object DisplayStore {
     private val _data = MutableStateFlow<Map<String, WidgetValue>>(emptyMap())
     val data: StateFlow<Map<String, WidgetValue>> = _data.asStateFlow()
 
+    private val _componentProps = MutableStateFlow<Map<String, ComponentProps>>(emptyMap())
+    val componentProps: StateFlow<Map<String, ComponentProps>> = _componentProps.asStateFlow()
+
     private val _pageIndex = MutableStateFlow(0)
     val pageIndex: StateFlow<Int> = _pageIndex.asStateFlow()
 
@@ -25,6 +30,7 @@ object DisplayStore {
 
     fun replaceLayout(layout: DisplayLayout) {
         _layout.value = layout
+        seedPropsFromLayout(layout)
     }
 
     fun patchPages(pages: List<DisplayPage>) {
@@ -39,18 +45,53 @@ object DisplayStore {
                 merged.add(page)
             }
         }
-        _layout.value = current.copy(pages = merged)
+        val updated = current.copy(pages = merged)
+        _layout.value = updated
+        seedPropsFromLayout(updated)
     }
 
-    fun setRaw(widgetId: String, raw: String): Boolean {
-        val type = findWidgetType(widgetId) ?: inferTypeFromId(widgetId)
+    fun setRawQualified(qualified: String, raw: String): Boolean {
+        val parts = DisplayKeys.splitQualified(qualified) ?: return false
+        return setRaw(parts.first, parts.second, raw)
+    }
+
+    fun setRaw(cardId: String, componentId: String, raw: String): Boolean {
+        val type = findComponentType(cardId, componentId) ?: inferTypeFromId(componentId)
         val value = parseRaw(raw, type) ?: return false
-        _data.value = _data.value.toMutableMap().apply { put(widgetId, value) }
+        val key = DisplayKeys.qualify(cardId, componentId)
+        _data.value = _data.value.toMutableMap().apply { put(key, value) }
         return true
     }
 
-    fun valueFor(widgetId: String, type: WidgetType): WidgetValue {
-        return _data.value[widgetId] ?: defaultValue(type)
+    fun setComponentProp(cardId: String, componentId: String, key: String, value: String): Boolean {
+        val qualified = DisplayKeys.qualify(cardId, componentId)
+        val current = _componentProps.value[qualified] ?: defaultProps(cardId, componentId)
+        val updated = when (key.lowercase()) {
+            "label" -> current.copy(label = value)
+            "enabled" -> current.copy(enabled = value.equals("true", ignoreCase = true) || value == "1")
+            "checked" -> current.copy(checked = value.equals("true", ignoreCase = true) || value == "1")
+            else -> return false
+        }
+        _componentProps.value = _componentProps.value.toMutableMap().apply { put(qualified, updated) }
+        return true
+    }
+
+    fun propsFor(
+        cardId: String,
+        componentId: String,
+        slotLabel: String?,
+        defaultChecked: Boolean = false,
+    ): ComponentProps {
+        val key = DisplayKeys.qualify(cardId, componentId)
+        return _componentProps.value[key] ?: ComponentProps(
+            label = slotLabel,
+            checked = defaultChecked,
+        )
+    }
+
+    fun valueFor(cardId: String, componentId: String, type: ComponentType): WidgetValue {
+        val key = DisplayKeys.qualify(cardId, componentId)
+        return _data.value[key] ?: defaultValue(type)
     }
 
     fun goTo(index: Int, layout: DisplayLayout) {
@@ -73,50 +114,101 @@ object DisplayStore {
         }
     }
 
-    private fun findWidgetType(widgetId: String): WidgetType? {
+    fun findComponentType(cardId: String, componentId: String): ComponentType? {
         return _layout.value.pages
             .asSequence()
-            .flatMap { it.widgets.asSequence() }
-            .firstOrNull { it.id == widgetId }
+            .flatMap { it.cards.asSequence() }
+            .firstOrNull { it.id == cardId }
+            ?.components
+            ?.firstOrNull { it.id == componentId }
             ?.type
     }
 
+    fun findCard(cardId: String) =
+        _layout.value.pages.asSequence().flatMap { it.cards.asSequence() }.firstOrNull { it.id == cardId }
+
     private fun seedDefaults() {
-        val seeded = DefaultDisplayLayout.defaultData.mapNotNull { (id, raw) ->
-            val type = findWidgetType(id) ?: inferTypeFromId(id)
-            parseRaw(raw, type)?.let { id to it }
+        val seeded = DefaultDisplayLayout.defaultData.mapNotNull { (qualified, raw) ->
+            val parts = DisplayKeys.splitQualified(qualified) ?: return@mapNotNull null
+            val type = findComponentType(parts.first, parts.second) ?: inferTypeFromId(parts.second)
+            parseRaw(raw, type)?.let { DisplayKeys.qualify(parts.first, parts.second) to it }
         }.toMap()
         _data.value = seeded
+        seedPropsFromLayout(_layout.value)
     }
 
-    private fun defaultValue(type: WidgetType): WidgetValue {
+    private fun seedPropsFromLayout(layout: DisplayLayout) {
+        val seeded = buildMap {
+            layout.pages.forEach { page ->
+                page.cards.forEach { card ->
+                    card.components.forEach { component ->
+                        if (component.type == ComponentType.BUTTON || component.type == ComponentType.TOGGLE) {
+                            val key = DisplayKeys.qualify(card.id, component.id)
+                            put(
+                                key,
+                                defaultProps(
+                                    card.id,
+                                    component.id,
+                                    component.label,
+                                    component.type,
+                                    component.defaultChecked,
+                                ),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        _componentProps.value = seeded
+    }
+
+    private fun defaultProps(
+        cardId: String,
+        componentId: String,
+        slotLabel: String? = null,
+        type: ComponentType? = findComponentType(cardId, componentId),
+        defaultChecked: Boolean = false,
+    ): ComponentProps {
+        val label = slotLabel ?: findCard(cardId)?.components?.firstOrNull { it.id == componentId }?.label
+        return ComponentProps(
+            label = label ?: componentId,
+            enabled = true,
+            checked = type == ComponentType.TOGGLE && defaultChecked,
+        )
+    }
+
+    private fun defaultValue(type: ComponentType): WidgetValue {
         return when (type) {
-            WidgetType.TEXT, WidgetType.METRIC -> WidgetValue.TextValue("--")
-            WidgetType.PROGRESS, WidgetType.RING -> WidgetValue.Percent(0f)
-            WidgetType.LINE, WidgetType.BAR -> WidgetValue.Series(emptyList())
-            WidgetType.PIE -> WidgetValue.Pie(emptyList())
+            ComponentType.TEXT, ComponentType.METRIC -> WidgetValue.TextValue("--")
+            ComponentType.PROGRESS, ComponentType.RING -> WidgetValue.Percent(0f)
+            ComponentType.LINE, ComponentType.BAR -> WidgetValue.Series(emptyList())
+            ComponentType.PIE -> WidgetValue.Pie(emptyList())
+            ComponentType.BUTTON, ComponentType.TOGGLE -> WidgetValue.TextValue("")
         }
     }
 
-    private fun inferTypeFromId(id: String): WidgetType {
+    private fun inferTypeFromId(id: String): ComponentType {
         return when (id.lowercase()) {
-            "progress" -> WidgetType.PROGRESS
-            "ring" -> WidgetType.RING
-            "line" -> WidgetType.LINE
-            "bar" -> WidgetType.BAR
-            "pie" -> WidgetType.PIE
-            "metric" -> WidgetType.METRIC
-            else -> WidgetType.TEXT
+            "progress" -> ComponentType.PROGRESS
+            "ring" -> ComponentType.RING
+            "line" -> ComponentType.LINE
+            "bar" -> ComponentType.BAR
+            "pie" -> ComponentType.PIE
+            "metric" -> ComponentType.METRIC
+            "button" -> ComponentType.BUTTON
+            "toggle" -> ComponentType.TOGGLE
+            else -> ComponentType.TEXT
         }
     }
 
-    fun parseRaw(raw: String, type: WidgetType): WidgetValue? {
-        if (raw.isBlank()) return null
+    fun parseRaw(raw: String, type: ComponentType): WidgetValue? {
+        if (raw.isBlank() && type.isDisplayType) return null
         return when (type) {
-            WidgetType.TEXT, WidgetType.METRIC -> WidgetValue.TextValue(raw)
-            WidgetType.PROGRESS, WidgetType.RING -> WidgetValue.Percent(parsePercent(raw))
-            WidgetType.LINE, WidgetType.BAR -> WidgetValue.Series(parseSeries(raw))
-            WidgetType.PIE -> WidgetValue.Pie(parsePie(raw))
+            ComponentType.TEXT, ComponentType.METRIC -> WidgetValue.TextValue(raw)
+            ComponentType.PROGRESS, ComponentType.RING -> WidgetValue.Percent(parsePercent(raw))
+            ComponentType.LINE, ComponentType.BAR -> WidgetValue.Series(parseSeries(raw))
+            ComponentType.PIE -> WidgetValue.Pie(parsePie(raw))
+            ComponentType.BUTTON, ComponentType.TOGGLE -> WidgetValue.TextValue(raw)
         }
     }
 

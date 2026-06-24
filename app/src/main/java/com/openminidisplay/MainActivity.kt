@@ -120,6 +120,18 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         screenManager.applyScreenPolicy(this)
+        if (RuntimeState.connectionState.value == ConnectionState.CONNECTED ||
+            screenManager.shouldKeepScreenOn()
+        ) {
+            screenManager.restoreBrightnessLevel(this)
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations) {
+            screenManager.restoreUserBrightness(this)
+        }
     }
 
     private fun requestStartupPermissions() {

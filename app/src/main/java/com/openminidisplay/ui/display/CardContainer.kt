@@ -18,7 +18,7 @@ import com.openminidisplay.settings.AppPreferences
 import com.openminidisplay.ui.theme.XianiiColors
 
 @Composable
-fun WidgetSlotContainer(
+fun CardContainer(
     showChrome: Boolean,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,

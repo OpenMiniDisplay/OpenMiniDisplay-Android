@@ -10,35 +10,37 @@ usage() {
 Usage: ./scripts/dev.sh <command>
 
 Commands:
-  build      Compile debug APK (Docker + ./gradlew)
-  install    Install debug APK to a connected device
+  build      Compile debug APK (Docker + ./gradlew, default: host uid)
+  install    Uninstall old package if present, then install debug APK
   run        Install (if needed) and launch MainActivity
   logs       Stream filtered logcat for this app
   debug      build + install + launch + logs (one-shot dev loop)
   devices    List connected adb devices
   uninstall  Remove app from device
-  shell      Interactive shell in the Android dev container (USB adb)
+  shell      Interactive shell in the Android dev container (USB adb, default: host uid)
 
 Other scripts:
   ./scripts/connect-test.sh [phone-ip]   # handshake smoke test
   ./scripts/widget-test.sh [phone-ip]    # loop preset widget SET updates
   ./scripts/chart-test.sh [phone-ip]     # loop chart widget SET updates
   ./scripts/layout-test.sh [phone-ip]    # push LAYOUT + loop SET + GOTO pages
+  ./scripts/card-script-test.sh [phone-ip]  # push Lua card layout, PING only
 
 Environment:
   ANDROID_SERIAL      Target a specific device when multiple are connected
   ANDROID_DEV_IMAGE   Docker image (default: xianii/android-dev:latest)
-  ANDROID_DEV_USER    Set to 1 to run Gradle as host user (needs writable ~/.gradle)
+  ANDROID_DEV_ROOT    Set to 1 to run Gradle/shell as container root (not recommended)
   LOG_TAGS            Extra logcat tags (default: RemoteDisplayService ScreenManager)
 
-Requires Docker with the android-dev image pulled:
+Requires Docker with the android-dev image (Gradle + adb in container only):
   https://github.com/Nigh/android-dev-docker
   docker pull xianii/android-dev:latest
+  docs/ANDROID_DEV_CONTAINER.md
 
 Examples:
   ./scripts/dev.sh debug
   ANDROID_SERIAL=0123456789ABCDEF ./scripts/dev.sh run
-  ./scripts/dev.sh logs
+  LOG_TAGS="CardScript RemoteDisplayService" ./scripts/dev.sh logs
 EOF
 }
 
@@ -54,7 +56,8 @@ cmd_install() {
         cmd_build
     fi
     print_header "Installing ${APP_ID}"
-    adb_cmd install -r "$CONTAINER_APK_PATH"
+    adb_cmd uninstall "$APP_ID" 2>/dev/null || true
+    adb_cmd --project install -r -t "$CONTAINER_APK_PATH"
 }
 
 cmd_run() {
@@ -71,7 +74,7 @@ cmd_logs() {
     adb_cmd logcat -c
     # shellcheck disable=SC2086
     adb_cmd logcat --pid="$(adb_cmd shell pidof -s "$APP_ID" 2>/dev/null || true)" -v time "$tags" "*:S" 2>/dev/null || \
-        adb_cmd logcat -v time | grep --line-buffered -E "${APP_ID}|RemoteDisplayService|ScreenManager|AndroidRuntime|FATAL"
+        adb_cmd logcat -v time | grep --line-buffered -E "${APP_ID}|RemoteDisplayService|ScreenManager|CardScript|AndroidRuntime|FATAL"
 }
 
 cmd_debug() {
@@ -94,10 +97,10 @@ cmd_uninstall() {
 cmd_shell() {
     setup_toolchain
     print_header "Interactive shell (${DOCKER_IMAGE})"
-    if [[ "${ANDROID_DEV_USER:-}" == "1" ]]; then
-        docker_run --interactive --usb --user --project "$ROOT_DIR" -- bash
-    else
+    if [[ "${ANDROID_DEV_ROOT:-}" == "1" ]]; then
         docker_run --interactive --usb --project "$ROOT_DIR" -- bash
+    else
+        docker_run --interactive --usb --user --project "$ROOT_DIR" -- bash
     fi
 }
 

@@ -12,8 +12,8 @@ usage() {
     cat <<EOF
 Usage: ./scripts/chart-test.sh [phone-ip]
 
-Loop through chart widgets (progress, ring, line, bar, pie) on TCP port ${LISTEN_PORT}.
-Keeps the session alive with periodic PING heartbeats.
+Loop through chart components (progress, ring, line, bar, pie) on TCP port ${LISTEN_PORT}.
+Uses v2 SET paths: cardId/componentId. Keeps the session alive with periodic PING heartbeats.
 
 Environment:
   INTERVAL_SECONDS     Delay between chart updates (default: 2)
@@ -47,31 +47,31 @@ send_chart_updates() {
     local bar="6,14,10,22,16,28"
     local pie="CPU:$((20 + cycle % 15)),MEM:$((15 + cycle % 10)),IO:$((10 + cycle % 8)),NET:$((25 + cycle % 12))"
 
-    echo "==> Cycle ${cycle}: refreshing chart widgets" >&2
+    echo "==> Cycle ${cycle}: refreshing chart components" >&2
 
-    printf 'SET progress %s\n' "$progress"
+    printf 'SET progress/progress %s\n' "$progress"
     printf 'PING\n'
-    echo "-> SET progress = ${progress}" >&2
+    echo "-> SET progress/progress = ${progress}" >&2
     sleep "$INTERVAL_SECONDS"
 
-    printf 'SET ring %s\n' "$ring"
+    printf 'SET ring/ring %s\n' "$ring"
     printf 'PING\n'
-    echo "-> SET ring = ${ring}" >&2
+    echo "-> SET ring/ring = ${ring}" >&2
     sleep "$INTERVAL_SECONDS"
 
-    printf 'SET line %s\n' "$line"
+    printf 'SET line/line %s\n' "$line"
     printf 'PING\n'
-    echo "-> SET line = ${line}" >&2
+    echo "-> SET line/line = ${line}" >&2
     sleep "$INTERVAL_SECONDS"
 
-    printf 'SET bar %s\n' "$bar"
+    printf 'SET bar/bar %s\n' "$bar"
     printf 'PING\n'
-    echo "-> SET bar = ${bar}" >&2
+    echo "-> SET bar/bar = ${bar}" >&2
     sleep "$INTERVAL_SECONDS"
 
-    printf 'SET pie %s\n' "$pie"
+    printf 'SET pie/pie %s\n' "$pie"
     printf 'PING\n'
-    echo "-> SET pie = ${pie}" >&2
+    echo "-> SET pie/pie = ${pie}" >&2
     sleep "$INTERVAL_SECONDS"
 }
 

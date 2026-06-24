@@ -39,7 +39,8 @@ OpenMiniDisplay turns an old Android phone (API 28+) into a low-power, remotely 
 | Target SDK | 35 |
 | UI | Jetpack Compose (layout-driven, full-screen immersive) |
 | Networking | Java `ServerSocket` (port 15180) |
-| Layout format | JSON via `org.json` (no extra deps) |
+| Layout format | JSON v2 via `org.json` (cards + components) |
+| Scripting | Luaj (`org.luaj:luaj-jse`) per-card Lua |
 | Build | Gradle Kotlin DSL + Version Catalog (`gradle/libs.versions.toml`) |
 | License | Apache-2.0 |
 
@@ -50,7 +51,9 @@ Controller (TCP :15180)
         │
         ▼
 RemoteDisplayService ──► DisplayCommandHandler
-        │                      └── DisplayStore (layout + data + page index)
+        │                      └── DisplayStore (layout + data + props + page index)
+        ├── CardScriptManager ──► LuaCardRuntime (per scripted card)
+        │       └── HttpBridge (HttpURLConnection)
         ├── RuntimeState (connection + brightness + power)
         ├── PowerState / ChargeLimitManager
         └── ScreenManager (Application singleton via OpenMiniDisplayApp)
@@ -67,14 +70,18 @@ RemoteDisplayService ──► DisplayCommandHandler
 |-----------|------|
 | `RemoteDisplayService` | Foreground service, TCP listener, heartbeat, command dispatch |
 | `DisplayCommandHandler` | Parses `SET` / `LAYOUT` / `PATCH` / `GOTO` |
-| `DisplayStore` | Layout structure, widget values, and page index |
+| `DisplayStore` | Layout structure, component values (`cardId:componentId`), props, page index |
+| `CardScriptManager` | Luaj runtimes for cards with `script`; timers, HTTP, IO events. **`syncLayout` runs on every `LAYOUT`/`PATCH`/`resumeAll`** (not via layout StateFlow — equal layouts must still restart scripts) |
+| `LuaCardRuntime` | Single-card Lua state, lifecycle hooks, host API |
 | `RuntimeState` | Connection state, screen brightness, and power plug status |
 | `PowerState` | Reads whether the device is connected to external power |
 | `ChargeLimitManager` | Best-effort 80% charge limit when plugged in (OEM/settings dependent) |
 | `OpenMiniDisplayApp` | Application entry; holds singleton `ScreenManager` |
 | `ScreenManager` | Brightness, wake locks, low-power transitions |
 | `DisplayHost` | Full-screen pager + page dots |
-| `PageRenderer` | Grid layout; single-widget pages are borderless |
+| `PageRenderer` | Page grid of cards; single-component card pages are borderless |
+| `CardRenderer` | Inner component grid within a card |
+| `ComponentRenderer` | Renders display + IO components |
 | `PitchBlackActivity` | Black screen after dim completes |
 
 ## UI rules
@@ -85,10 +92,11 @@ RemoteDisplayService ──► DisplayCommandHandler
 - **1 page** → static view, **no swipe**
 - **2+ pages** → infinite horizontal swipe (wrap: first ↔ last) + bottom page dots
 - **`GOTO`** → `animateScrollToPage` (animated, shortest circular path)
-- **1 widget on a page** → borderless full-screen (`showChrome = false`)
-- **2+ widgets on a page** → card chrome + grid layout
+- **1 card on a page** with **1 component** → borderless full-screen
+- **2+ cards on a page** → card chrome + page grid
+- **2+ components in a card** → inner grid (no per-component chrome)
 
-Widget types: `text`, `metric`, `progress`, `ring`, `line`, `bar`, `pie`.
+Component types: `text`, `metric`, `progress`, `ring`, `line`, `bar`, `pie`, `button`, `toggle`.
 
 ## Protocol (Port 15180)
 
@@ -100,38 +108,60 @@ Newline-terminated UTF-8 text over TCP.
 |---------|--------|
 | `OPENMINIDISPLAY` / `CONNECT` | Handshake → **CONNECTED** |
 | `PING` | Heartbeat (5 s timeout → **DISCONNECTED**) |
-| `SET <id> <value>` | Update widget data (counts as activity) |
+| `SET <cardId>/<componentId> <value>` | Update component data (counts as activity) |
 | `LAYOUT <json>` | Replace entire layout |
 | `PATCH <json>` | Merge/replace pages by `id` |
 | `GOTO <index\|pageId>` | Switch page with slide animation |
 
-### Layout JSON
+### Layout JSON (v2)
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "pages": [
     {
       "id": "overview",
       "grid": { "rows": 3, "cols": 4, "gap": 8, "padding": 16 },
-      "widgets": [
-        { "id": "title", "type": "text", "row": 0, "col": 0, "colSpan": 4, "style": "headline" }
+      "cards": [
+        {
+          "id": "weather",
+          "row": 0, "col": 0, "rowSpan": 2, "colSpan": 1,
+          "grid": { "rows": 3, "cols": 1, "gap": 4, "padding": 8 },
+          "script": "function on_init() set('temp','--') end",
+          "components": [
+            { "id": "title", "type": "text", "row": 0, "col": 0, "style": "headline" },
+            { "id": "refresh", "type": "button", "row": 2, "col": 0, "label": "Refresh" }
+          ]
+        }
       ]
     }
   ]
 }
 ```
 
-Per-widget fields: `id`, `type`, `row`, `col`, `rowSpan`, `colSpan`, optional `style` (`headline|body|caption|metric`), optional `label`.
+Per-component fields: `id`, `type`, `row`, `col`, `rowSpan`, `colSpan`, optional `style`, optional `label`, optional `checked` (toggle initial state).
+Optional per-card `script` (Lua source). v1 `widgets` layouts are **not** accepted.
+
+### Card Lua API (host-provided globals)
+
+| Function | Purpose |
+|----------|---------|
+| `set(id, value)` | Update component value in this card |
+| `set_prop(id, key, val)` | `label`, `enabled`, `checked` |
+| `every(sec, name)` / `cancel(name)` | Repeating timer → `on_timer(name)` |
+| `http_get(url, fn)` | Async GET → `fn(status, body_table, err)` |
+| `log(msg)` | Logcat tag `CardScript` |
+
+Lifecycle: `on_init`, `on_timer`, `on_event(id, event, value?)`, `on_destroy`.
 
 ### Data formats (`SET`)
 
 | Type | Example |
 |------|---------|
-| text / metric | `SET title Hello` |
-| progress / ring | `SET progress 72` |
-| line / bar | `SET line 10,20,15,30` |
-| pie | `SET pie CPU:30,MEM:25,IO:20` |
+| text / metric | `SET weather/temp Hello` |
+| progress / ring | `SET dash/cpu 72` |
+| line / bar | `SET dash/line 10,20,15,30` |
+| pie | `SET dash/pie CPU:30,MEM:25,IO:20` |
 
 ## Low-power behavior
 
@@ -152,35 +182,50 @@ Power source affects screen and charging policy.
 | **Dimming (plugged only)** | Linear 10 s fade (~60 fps); content stays visible during dim |
 | **After dim (plugged only)** | Navigate to `PitchBlackActivity` (content hidden, screen stays on) |
 | **Battery low-power** | Release service wake/Wi‑Fi locks; clear keep-screen-on; finish UI task |
-| **Battery deep idle** | Stop TCP listener; notification shows sleep state; wake restores listener |
+| **Battery deep idle** | Stop TCP listener; **pause card scripts**; notification shows sleep state; wake restores listener + scripts |
 | **User touch** (while disconnected) | Restore brightness, return to dashboard, reset 60 s timer |
+| **Leave dashboard** (settings, home, task switch) | Restore pre-display **system** brightness (`ScreenManager.restoreUserBrightness`); return to dashboard restores display brightness when connected |
 | **Plugged in** | Try to enable **80% charge limit** via OEM/settings keys when permitted (`WRITE_SETTINGS` / device support) |
 | **Unplugged** | Restore previous charge-limit setting if app had applied one |
 
 ## Build & device scripts
 
-Build and adb run inside the [android-dev-docker](https://github.com/Nigh/android-dev-docker) image (`xianii/android-dev:latest` by default). Do **not** mix host `adb` with container `adb` — mount `~/.adb` for stable USB authorization.
+Gradle and **adb run inside** [android-dev-docker](https://github.com/Nigh/android-dev-docker) (`xianii/android-dev:latest`). Do **not** use host `adb`. Build/adb/shell default to **host uid** (`--user`); USB uses `--device=/dev/bus/usb`, `--group-add plugdev`, mount `~/.gradle`, `~/.android`, `~/.adb`. See [`docs/ANDROID_DEV_CONTAINER.md`](docs/ANDROID_DEV_CONTAINER.md).
 
 ```bash
 docker pull xianii/android-dev:latest   # once
+mkdir -p ~/.gradle ~/.android ~/.adb
+```
 
+```bash
 ./scripts/dev.sh devices
-./scripts/dev.sh build                  # Docker + ./gradlew assembleDebug
-./scripts/dev.sh install
+./scripts/dev.sh build                  # Docker + ./gradlew assembleDebug (--user)
+./scripts/dev.sh install                # uninstall + install debug APK
 ./scripts/dev.sh run
 ./scripts/dev.sh logs
 ./scripts/dev.sh debug                  # build + install + launch + logs
-./scripts/dev.sh shell                  # interactive container (USB adb)
-
-./scripts/layout-test.sh                # LAYOUT + SET loop + GOTO pages
-./scripts/widget-test.sh                # SET loop (default layout)
-./scripts/chart-test.sh                 # chart SET loop
-./scripts/connect-test.sh               # handshake smoke test
+./scripts/dev.sh shell                  # interactive container (USB adb, --user)
 ```
 
-Scripts read `LISTEN_PORT=15180` from `scripts/common.sh`. Use `ANDROID_SERIAL=...` when multiple devices are connected. Override the image with `ANDROID_DEV_IMAGE=...`. Set `ANDROID_DEV_USER=1` to run Gradle as the host user (requires writable `~/.gradle`).
+Scripts read `LISTEN_PORT=15180` from `scripts/common.sh`. Use `ANDROID_SERIAL=...` when multiple devices are connected. Override the image with `ANDROID_DEV_IMAGE=...`. Set `ANDROID_DEV_ROOT=1` only if you need container-root Gradle/shell (not recommended).
 
-Persistent host dirs (auto-mounted): `~/.gradle`, `~/.android` (debug keystore), `~/.adb` (adb keys).
+Persistent host dirs (always mounted):
+
+| Path | Purpose |
+|------|---------|
+| `~/.gradle` | Gradle cache |
+| `~/.android` | debug signing keystore |
+| `~/.adb` | adb USB keys (**not** the same as `~/.android/adbkey` used by Android Studio) |
+
+If USB authorization breaks after mixing host and container adb, revoke authorizations on the device and run `./scripts/dev.sh devices` again.
+
+```bash
+./scripts/layout-test.sh                # LAYOUT v2 + SET loop + GOTO pages
+./scripts/widget-test.sh                # SET loop (default layout)
+./scripts/chart-test.sh                 # chart SET loop
+./scripts/card-script-test.sh [phone-ip]  # Lua card layout, PING only (IP arg skips adb)
+./scripts/connect-test.sh               # handshake smoke test
+```
 
 ## Key files
 
@@ -201,26 +246,40 @@ app/src/main/java/com/openminidisplay/
     └── protocol/
         ├── DisplayCommandHandler.kt
         └── DisplayLayoutParser.kt
+└── script/
+    ├── CardScriptManager.kt
+    ├── LuaCardRuntime.kt
+    ├── LuaHostApi.kt
+    ├── HttpBridge.kt
+    ├── LuaSandbox.kt
+    └── LuaSandboxSelfCheck.kt
 └── ui/
     ├── display/
     │   ├── DisplayHost.kt
     │   ├── PageRenderer.kt
-    │   ├── WidgetSlotContainer.kt
-    │   └── WidgetRenderer.kt
+    │   ├── CardRenderer.kt
+    │   ├── CardContainer.kt
+    │   └── ComponentRenderer.kt
     └── widgets/
         ├── ChartWidgets.kt
-        └── TextWidget.kt
+        ├── TextWidget.kt
+        ├── ButtonComponent.kt
+        └── ToggleComponent.kt
 scripts/
 ├── common.sh
 ├── dev.sh
 ├── layout-test.sh
 ├── widget-test.sh
 ├── chart-test.sh
+├── card-script-test.sh
 └── connect-test.sh
 docs/
 ├── CONTROLLER_INTEGRATION.md   # external controller / cross-platform agent spec
+├── ANDROID_DEV_CONTAINER.md    # Docker image USB adb requirements
+├── schemas/layout.v2.schema.json
 ├── schemas/layout.v1.schema.json
-└── examples/reference_client.py
+├── examples/reference_client.py
+└── examples/sample_card.lua
 LICENSE
 README.md
 AGENTS.md
@@ -231,12 +290,12 @@ AGENTS.md
 1. **Sync `AGENTS.md`** — mandatory with every substantive change (see above).
 2. **Sync `docs/CONTROLLER_INTEGRATION.md`** — mandatory when protocol, layout schema, or controller-visible behavior changes.
 3. Keep **layout and data separate** — no values embedded in layout JSON.
-4. Preserve **single-widget borderless** rendering.
+4. Preserve **single-component card borderless** rendering on single-card pages.
 5. **No vertical scroll** on display pages.
-6. Extend **`WidgetType` + `WidgetRenderer`** instead of hardcoding UI in `MainActivity`.
+6. Extend **`ComponentType` + `ComponentRenderer`** instead of hardcoding UI in `MainActivity`.
 7. Preserve **infinite pager** behavior for multi-page layouts.
 8. Prefer minimal diffs; avoid new dependencies unless clearly necessary.
-9. Test on device when behavior changes: `./scripts/layout-test.sh` or `./scripts/dev.sh debug`.
+9. Test on device when behavior changes: `./scripts/layout-test.sh`, `./scripts/card-script-test.sh`, or `./scripts/dev.sh debug`.
 10. Do not commit secrets (`local.properties`, keystores, tokens).
 
 ## Repository
