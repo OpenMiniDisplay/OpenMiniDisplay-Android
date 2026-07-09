@@ -96,7 +96,7 @@ RemoteDisplayService ──► DisplayCommandHandler
 - **2+ cards on a page** → card chrome + page grid
 - **2+ components in a card** → inner grid (no per-component chrome)
 
-Component types: `text`, `metric`, `progress`, `ring`, `line`, `bar`, `pie`, `button`, `toggle`.
+Component types: `text`, `metric`, `progress`, `ring`, `line`, `bar`, `pie`, `button`, `toggle`, `image`.
 
 ## Protocol (Port 15180)
 
@@ -110,6 +110,7 @@ Newline-terminated UTF-8 text over TCP.
 | `OPENMINIDISPLAY` / `CONNECT` | Handshake → **CONNECTED** |
 | `PING` | Heartbeat (5 s timeout → **DISCONNECTED**) |
 | `SET <cardId>/<componentId> <value>` | Update component data (counts as activity) |
+| `PUSH <assetId> <base64>` | Store binary asset (e.g. GIF); reference with `SET … asset:<assetId>` |
 | `LAYOUT <json>` | Replace entire layout |
 | `PATCH <json>` | Merge/replace pages by `id` |
 | `GOTO <index\|pageId>` | Switch page with slide animation |
@@ -167,6 +168,7 @@ Lifecycle: `on_init`, `on_timer`, `on_event(id, event, value?)`, `on_destroy`.
 | progress / ring | `SET dash/cpu 72` |
 | line / bar | `SET dash/line 10,20,15,30` |
 | pie | `SET dash/pie CPU:30,MEM:25,IO:20` |
+| image | `PUSH hero.gif <base64>` then `SET card/img asset:hero.gif` |
 
 ## Low-power behavior
 
@@ -231,6 +233,7 @@ If USB authorization breaks after mixing host and container adb, revoke authoriz
 ./scripts/card-script-test.sh [phone-ip]  # Lua card layout, PING only (IP arg skips adb)
 ./scripts/connect-test.sh               # handshake smoke test
 ./demo_script/clock-pomodoro/run.sh [phone-ip]  # clock + Pomodoro two-page demo
+./demo_script/gif-gallery/run.sh [phone-ip]      # 3-page animated GIF gallery
 ```
 
 ## Key files
@@ -247,6 +250,7 @@ app/src/main/java/com/openminidisplay/
 ├── PitchBlackActivity.kt
 └── display/
     ├── DisplayStore.kt
+    ├── DisplayAssetStore.kt
     ├── DefaultDisplayLayout.kt
     ├── model/DisplayModels.kt
     └── protocol/
@@ -270,7 +274,8 @@ app/src/main/java/com/openminidisplay/
         ├── ChartWidgets.kt
         ├── TextWidget.kt
         ├── ButtonComponent.kt
-        └── ToggleComponent.kt
+        ├── ToggleComponent.kt
+        └── ImageWidget.kt
 scripts/
 ├── common.sh
 ├── dev.sh
@@ -285,6 +290,10 @@ demo_script/
     ├── README.md
     ├── clock.lua
     ├── pomodoro.lua
+    └── run.sh
+└── gif-gallery/        # 3-page GIF gallery (mahiro / miku / cats)
+    ├── README.md
+    ├── *.gif
     └── run.sh
 docs/
 ├── CONTROLLER_INTEGRATION.md   # normative spec for PC / cross-platform controllers

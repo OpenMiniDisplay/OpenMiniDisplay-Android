@@ -1,6 +1,7 @@
 package com.openminidisplay.display.protocol
 
 import android.util.Log
+import com.openminidisplay.display.DisplayAssetStore
 import com.openminidisplay.display.DisplayStore
 import com.openminidisplay.script.CardScriptManager
 
@@ -13,6 +14,7 @@ object DisplayCommandHandler {
 
         return when {
             trimmed.startsWith("SET ", ignoreCase = true) -> handleSet(trimmed)
+            trimmed.startsWith("PUSH ", ignoreCase = true) -> handlePush(trimmed)
             trimmed.startsWith("LAYOUT ", ignoreCase = true) -> handleLayout(trimmed)
             trimmed.startsWith("PATCH ", ignoreCase = true) -> handlePatch(trimmed)
             trimmed.startsWith("GOTO ", ignoreCase = true) -> handleGoto(trimmed)
@@ -39,6 +41,19 @@ object DisplayCommandHandler {
             Log.w(TAG, "Failed to update component '$target'")
         }
         return updated
+    }
+
+    private fun handlePush(message: String): Boolean {
+        val payload = message.drop(5).trim()
+        val separatorIndex = payload.indexOf(' ')
+        if (separatorIndex <= 0) return false
+        val assetId = payload.substring(0, separatorIndex).trim()
+        val base64 = payload.substring(separatorIndex + 1).trim()
+        if (assetId.isEmpty() || base64.isEmpty()) return false
+        val ok = DisplayAssetStore.push(assetId, base64)
+        if (!ok) Log.w(TAG, "Failed to PUSH asset '$assetId'")
+        else Log.i(TAG, "Pushed asset '$assetId' (${base64.length} b64 chars)")
+        return ok
     }
 
     private fun handleLayout(message: String): Boolean {

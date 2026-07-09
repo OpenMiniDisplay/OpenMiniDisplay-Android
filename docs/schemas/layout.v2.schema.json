@@ -67,7 +67,7 @@
         "id": { "type": "string", "minLength": 1 },
         "type": {
           "type": "string",
-          "enum": ["text", "metric", "progress", "ring", "line", "bar", "pie", "button", "toggle"]
+          "enum": ["text", "metric", "progress", "ring", "line", "bar", "pie", "button", "toggle", "image"]
         },
         "row": { "type": "integer", "minimum": 0 },
         "col": { "type": "integer", "minimum": 0 },

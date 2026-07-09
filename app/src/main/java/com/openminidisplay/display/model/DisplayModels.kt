@@ -63,6 +63,7 @@ enum class ComponentType {
     PIE,
     BUTTON,
     TOGGLE,
+    IMAGE,
     ;
 
     val isDisplayType: Boolean
@@ -80,6 +81,7 @@ enum class ComponentType {
                 "pie" -> PIE
                 "button" -> BUTTON
                 "toggle" -> TOGGLE
+                "image" -> IMAGE
                 else -> null
             }
         }

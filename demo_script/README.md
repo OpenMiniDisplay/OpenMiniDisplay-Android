@@ -5,11 +5,13 @@ Self-contained example apps for OpenMiniDisplay. **Each example lives in its own
 | Example | Description |
 |---------|-------------|
 | [`clock-pomodoro/`](clock-pomodoro/) | Page 1: full-screen 24h clock; page 2: Pomodoro timer |
+| [`gif-gallery/`](gif-gallery/) | 3 pages: mahiro / miku / twin cat GIFs |
 
 ## Run an example
 
 ```bash
 ./demo_script/clock-pomodoro/run.sh [phone-ip]
+./demo_script/gif-gallery/run.sh [phone-ip]
 ```
 
 Phone on USB: omit IP (script detects Wi‑Fi address via adb). Same LAN: pass the display IP.

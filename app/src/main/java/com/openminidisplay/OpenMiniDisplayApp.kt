@@ -5,6 +5,8 @@ import android.app.Application
 import android.content.Context
 import android.os.Bundle
 import com.openminidisplay.settings.AppPreferences
+import com.openminidisplay.display.DisplayAssetStore
+import com.openminidisplay.display.DisplayAssetStoreSelfCheck
 import java.lang.ref.WeakReference
 
 class OpenMiniDisplayApp : Application() {
@@ -14,6 +16,8 @@ class OpenMiniDisplayApp : Application() {
     override fun onCreate() {
         super.onCreate()
         AppPreferences.init(this)
+        DisplayAssetStore.init(this)
+        DisplayAssetStoreSelfCheck.run()
         registerActivityLifecycleCallbacks(MainActivityTracker)
     }
 
