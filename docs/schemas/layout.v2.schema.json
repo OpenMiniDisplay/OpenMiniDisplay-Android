@@ -83,7 +83,15 @@
           "type": "boolean",
           "default": false,
           "description": "Initial on-state for toggle components"
-        }
+        },
+        "align": {
+          "type": "string",
+          "enum": ["start", "center", "end"]
+        },
+        "fill": { "type": "boolean" },
+        "fit": { "type": "boolean", "default": false },
+        "scale": { "type": "number", "minimum": 0.2, "maximum": 1.0 },
+        "showLabel": { "type": "boolean" }
       },
       "additionalProperties": false
     }

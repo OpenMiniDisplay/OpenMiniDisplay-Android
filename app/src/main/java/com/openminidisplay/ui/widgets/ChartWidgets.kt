@@ -72,6 +72,7 @@ fun RingProgressWidget(
     modifier: Modifier = Modifier,
     showLabel: Boolean = true,
     expanded: Boolean = false,
+    scale: Float = 0.55f,
 ) {
     val color = MaterialTheme.colorScheme.primary
     val track = MaterialTheme.colorScheme.surfaceVariant
@@ -81,7 +82,7 @@ fun RingProgressWidget(
         contentAlignment = Alignment.Center,
     ) {
         val ringSize = if (expanded) {
-            min(maxWidth, maxHeight) * 0.55f
+            min(maxWidth, maxHeight) * scale
         } else {
             96.dp
         }
@@ -89,12 +90,21 @@ fun RingProgressWidget(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = if (expanded) Modifier.fillMaxSize() else Modifier,
         ) {
             if (showLabel) {
                 Text(label, style = MaterialTheme.typography.labelMedium)
             }
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(ringSize)) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = if (expanded) {
+                    Modifier.weight(1f).fillMaxWidth()
+                } else {
+                    Modifier.size(ringSize)
+                },
+            ) {
+                val canvasModifier = if (expanded) Modifier.fillMaxSize() else Modifier.fillMaxSize()
+                Canvas(modifier = canvasModifier) {
                     val stroke = if (expanded) 14.dp.toPx() else 10.dp.toPx()
                     val arcSize = mathMin(size.width, size.height) - stroke
                     val topLeft = Offset((size.width - arcSize) / 2f, (size.height - arcSize) / 2f)

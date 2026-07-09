@@ -7,6 +7,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.openminidisplay.RemoteDisplayService
 import com.openminidisplay.display.DisplayStore
+import com.openminidisplay.display.model.ComponentPresentation
 import com.openminidisplay.display.model.ComponentSlot
 import com.openminidisplay.display.model.ComponentType
 import com.openminidisplay.display.model.DisplayKeys
@@ -36,6 +37,9 @@ fun RenderComponent(
     val value = dataMap[qualified] ?: DisplayStore.valueFor(cardId, slot.id, slot.type)
     val props = propsMap[qualified] ?: DisplayStore.propsFor(cardId, slot.id, slot.label, slot.defaultChecked)
     val label = props.label ?: slot.label ?: slot.id
+    val cardMultiComponent = showLabel
+    val present = ComponentPresentation.resolve(slot, props, cardMultiComponent)
+    val expanded = present.fill
 
     when (slot.type) {
         ComponentType.TEXT, ComponentType.METRIC -> {
@@ -43,7 +47,9 @@ fun RenderComponent(
             TextWidget(
                 text = text,
                 styleKind = if (slot.type == ComponentType.METRIC) TextStyleKind.METRIC else slot.style,
-                expanded = !showLabel,
+                expanded = expanded && !present.fit,
+                align = present.align,
+                fit = present.fit,
                 modifier = modifier,
             )
         }
@@ -52,8 +58,8 @@ fun RenderComponent(
             ProgressBarWidget(
                 label = label,
                 value = percent,
-                showLabel = showLabel,
-                expanded = !showLabel,
+                showLabel = present.showLabel,
+                expanded = expanded,
                 modifier = modifier,
             )
         }
@@ -62,8 +68,9 @@ fun RenderComponent(
             RingProgressWidget(
                 label = label,
                 value = percent,
-                showLabel = showLabel,
-                expanded = !showLabel,
+                showLabel = present.showLabel,
+                expanded = expanded,
+                scale = present.scale,
                 modifier = modifier,
             )
         }
@@ -72,8 +79,8 @@ fun RenderComponent(
             LineChartWidget(
                 label = label,
                 series = series,
-                showLabel = showLabel,
-                expanded = !showLabel,
+                showLabel = present.showLabel,
+                expanded = expanded,
                 modifier = modifier,
             )
         }
@@ -82,8 +89,8 @@ fun RenderComponent(
             BarChartWidget(
                 label = label,
                 series = series,
-                showLabel = showLabel,
-                expanded = !showLabel,
+                showLabel = present.showLabel,
+                expanded = expanded,
                 modifier = modifier,
             )
         }
@@ -92,8 +99,8 @@ fun RenderComponent(
             PieChartWidget(
                 label = label,
                 slices = slices,
-                showLabel = showLabel,
-                expanded = !showLabel,
+                showLabel = present.showLabel,
+                expanded = expanded,
                 modifier = modifier,
             )
         }

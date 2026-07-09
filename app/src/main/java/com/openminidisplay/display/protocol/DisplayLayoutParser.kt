@@ -1,5 +1,6 @@
 package com.openminidisplay.display.protocol
 
+import com.openminidisplay.display.model.ComponentAlign
 import com.openminidisplay.display.model.ComponentSlot
 import com.openminidisplay.display.model.ComponentType
 import com.openminidisplay.display.model.DisplayCard
@@ -106,6 +107,11 @@ object DisplayLayoutParser {
             style = TextStyleKind.fromRaw(json.optString("style", "body")),
             label = json.optString("label", "").takeIf { it.isNotBlank() },
             defaultChecked = json.optBoolean("checked", false),
+            align = ComponentAlign.fromRaw(json.optString("align", "").takeIf { it.isNotBlank() }),
+            fill = if (json.has("fill")) json.optBoolean("fill") else null,
+            fit = json.optBoolean("fit", false),
+            scale = json.optDouble("scale", Double.NaN).takeUnless { it.isNaN() }?.toFloat(),
+            showLabel = if (json.has("showLabel")) json.optBoolean("showLabel") else null,
         )
     }
 

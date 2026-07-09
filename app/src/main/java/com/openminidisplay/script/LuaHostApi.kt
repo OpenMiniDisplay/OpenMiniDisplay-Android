@@ -7,6 +7,9 @@ import org.luaj.vm2.LuaValue
 import org.luaj.vm2.lib.OneArgFunction
 import org.luaj.vm2.lib.ThreeArgFunction
 import org.luaj.vm2.lib.TwoArgFunction
+import org.luaj.vm2.lib.ZeroArgFunction
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -15,6 +18,7 @@ class LuaHostApi(
     private val onEvery: (seconds: Double, name: String) -> Unit,
     private val onCancel: (name: String) -> Unit,
     private val onHttpGet: (url: String, callback: LuaFunction) -> Unit,
+    private val onWake: () -> Unit,
 ) {
     private val nextRequestId = AtomicInteger(0)
     private val httpCallbacks = ConcurrentHashMap<Int, LuaFunction>()
@@ -57,6 +61,17 @@ class LuaHostApi(
                 return LuaValue.NIL
             }
         })
+        globals.set("local_time", object : ZeroArgFunction() {
+            override fun call(): LuaValue {
+                return LuaValue.valueOf(LocalTime.now().format(LOCAL_TIME_FORMAT))
+            }
+        })
+        globals.set("wake", object : ZeroArgFunction() {
+            override fun call(): LuaValue {
+                onWake()
+                return LuaValue.NIL
+            }
+        })
     }
 
     fun dispatchHttpCallback(requestId: Int, status: Int, body: LuaValue, error: String?) {
@@ -80,5 +95,6 @@ class LuaHostApi(
 
     companion object {
         private const val TAG = "CardScript"
+        private val LOCAL_TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss")
     }
 }

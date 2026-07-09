@@ -141,6 +141,8 @@ Newline-terminated UTF-8 text over TCP.
 ```
 
 Per-component fields: `id`, `type`, `row`, `col`, `rowSpan`, `colSpan`, optional `style`, optional `label`, optional `checked` (toggle initial state).
+Optional presentation: `align` (`start`/`center`/`end`), `fill` (use full grid cell), `fit` (auto-fit text to cell), `scale` (0.2–1.0, ring/charts fill fraction), `showLabel` (override chart/ring label).
+Single-component borderless pages still default to `fill` + center when `fit` is set.
 Optional per-card `script` (Lua source). Layout **v2 only** (`pages` → `cards` → `components`).
 
 ### Card Lua API (host-provided globals)
@@ -148,9 +150,11 @@ Optional per-card `script` (Lua source). Layout **v2 only** (`pages` → `cards`
 | Function | Purpose |
 |----------|---------|
 | `set(id, value)` | Update component value in this card |
-| `set_prop(id, key, val)` | `label`, `enabled`, `checked` |
+| `set_prop(id, key, val)` | `label`, `enabled`, `checked`, `align`, `fill`, `fit`, `scale`, `showLabel` |
 | `every(sec, name)` / `cancel(name)` | Repeating timer → `on_timer(name)` |
 | `http_get(url, fn)` | Async GET → `fn(status, body_table, err)` |
+| `local_time()` | Device local time as `HH:mm:ss` (24h) |
+| `wake()` | Exit idle / restore brightness (same as user touch when disconnected) |
 | `log(msg)` | Logcat tag `CardScript` |
 
 Lifecycle: `on_init`, `on_timer`, `on_event(id, event, value?)`, `on_destroy`.
@@ -181,7 +185,7 @@ Power source affects screen and charging policy.
 | **CONNECTED** | Screen wake lock, max brightness, dashboard visible |
 | **DISCONNECTED** | UI stays on dashboard; 60 s countdown to low-power |
 | **Dimming (plugged only)** | Linear 10 s fade (~60 fps); content stays visible during dim |
-| **After dim (plugged only)** | Navigate to `PitchBlackActivity` (content hidden, screen stays on) |
+| **After dim (plugged only)** | Navigate to `PitchBlackActivity` (content hidden, screen stays on), **unless card Lua timers are active** → hold ~20% brightness on dashboard |
 | **Battery low-power** | Release service wake/Wi‑Fi locks; clear keep-screen-on; finish UI task |
 | **Battery deep idle** | Stop TCP listener; **pause card scripts**; notification shows sleep state; wake restores listener + scripts |
 | **User touch / power plug or unplug** (while disconnected) | Restore brightness, return to dashboard, reset 60 s timer |
@@ -226,6 +230,7 @@ If USB authorization breaks after mixing host and container adb, revoke authoriz
 ./scripts/chart-test.sh                 # chart SET loop
 ./scripts/card-script-test.sh [phone-ip]  # Lua card layout, PING only (IP arg skips adb)
 ./scripts/connect-test.sh               # handshake smoke test
+./demo_script/clock-pomodoro/run.sh [phone-ip]  # clock + Pomodoro two-page demo
 ```
 
 ## Key files
@@ -274,6 +279,13 @@ scripts/
 ├── chart-test.sh
 ├── card-script-test.sh
 └── connect-test.sh
+demo_script/
+├── README.md
+└── clock-pomodoro/     # clock + Pomodoro two-page demo
+    ├── README.md
+    ├── clock.lua
+    ├── pomodoro.lua
+    └── run.sh
 docs/
 ├── CONTROLLER_INTEGRATION.md   # normative spec for PC / cross-platform controllers
 ├── ANDROID_DEV_CONTAINER.md    # Docker image USB adb requirements
@@ -298,7 +310,7 @@ AGENTS.md
 6. Extend **`ComponentType` + `ComponentRenderer`** instead of hardcoding UI in `MainActivity`.
 7. Preserve **infinite pager** behavior for multi-page layouts.
 8. Prefer minimal diffs; avoid new dependencies unless clearly necessary.
-9. Test on device when behavior changes: `./scripts/layout-test.sh`, `./scripts/card-script-test.sh`, or `./scripts/dev.sh debug`.
+9. Test on device when behavior changes: `./scripts/layout-test.sh`, `./scripts/card-script-test.sh`, `./demo_script/clock-pomodoro/run.sh`, or `./scripts/dev.sh debug`.
 10. Do not commit secrets (`local.properties`, keystores, tokens).
 
 ## Repository

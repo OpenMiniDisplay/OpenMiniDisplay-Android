@@ -46,6 +46,11 @@ data class ComponentSlot(
     val style: TextStyleKind = TextStyleKind.BODY,
     val label: String? = null,
     val defaultChecked: Boolean = false,
+    val align: ComponentAlign? = null,
+    val fill: Boolean? = null,
+    val fit: Boolean = false,
+    val scale: Float? = null,
+    val showLabel: Boolean? = null,
 ) : GridPlaced
 
 enum class ComponentType {
@@ -109,6 +114,11 @@ data class ComponentProps(
     val label: String? = null,
     val enabled: Boolean = true,
     val checked: Boolean = false,
+    val align: ComponentAlign? = null,
+    val fill: Boolean? = null,
+    val fit: Boolean? = null,
+    val scale: Float? = null,
+    val showLabel: Boolean? = null,
 )
 
 object DisplayKeys {

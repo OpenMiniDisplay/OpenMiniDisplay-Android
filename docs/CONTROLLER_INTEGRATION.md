@@ -378,6 +378,11 @@ Validate with: [`docs/schemas/layout.v2.schema.json`](schemas/layout.v2.schema.j
 | `style` | No | `headline`, `body`, `caption`, `metric` |
 | `label` | No | Default label for charts / button / toggle |
 | `checked` | No | Initial on-state for `toggle` (default `false`) |
+| `align` | No | `start`, `center`, `end` — content alignment in grid cell |
+| `fill` | No | `true` = use full cell (large ring/text/charts). Default `true` on borderless single-component pages |
+| `fit` | No | `true` = auto-fit `text`/`metric` font to cell (implies centered) |
+| `scale` | No | `0.2`–`1.0` — fraction of cell used by `ring` when `fill` (default `0.85`) |
+| `showLabel` | No | `true`/`false` — override chart/ring label visibility |
 
 ### 5.5 Display rendering rules (for layout authors)
 
@@ -430,10 +435,12 @@ When a card includes a non-empty `script` field, the device runs it in **Luaj** 
 | Function | Description |
 |----------|-------------|
 | `set(id, value)` | Update display component in this card |
-| `set_prop(id, key, val)` | `label`, `enabled`, or `checked` |
+| `set_prop(id, key, val)` | `label`, `enabled`, `checked`, `align`, `fill`, `fit`, `scale`, `showLabel` |
 | `every(sec, name)` | Start repeating timer |
 | `cancel(name)` | Stop timer |
 | `http_get(url, fn)` | Async GET; `fn(status, body_table_or_nil, err_string)` |
+| `local_time()` | Device local time as `HH:mm:ss` (24-hour) |
+| `wake()` | Exit idle dim / restore dashboard brightness (equivalent to user touch while disconnected) |
 | `log(msg)` | Logcat |
 
 **IO events:**
@@ -469,6 +476,8 @@ send(sock, "LAYOUT " + json.dumps(layout, separators=(",", ":"), ensure_ascii=Fa
 After `LAYOUT`, send only `PING` — the script updates components locally (`set`, `every`, `http_get`). Re-sending the **same** layout restarts scripts (`on_init` runs again).
 
 Scripts pause during **battery deep idle** (on battery, disconnected, after low-power timeout) and restart on wake.
+
+When **plugged in**, disconnected, and card Lua **timers are still running** (e.g. clock tick), idle dim stops at ~20% brightness on the dashboard instead of navigating to pitch-black.
 
 Example script: [`docs/examples/sample_card.lua`](examples/sample_card.lua).  
 Bash test: `./scripts/card-script-test.sh <display-ip>`.  
