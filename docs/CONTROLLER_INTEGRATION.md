@@ -201,7 +201,7 @@ suffix      := optional extra characters (ignored for CONNECT/PING prefix match)
 SP          := one ASCII space
 ```
 
-**Case:** Command keywords are matched **case-insensitively** for `SET`, `LAYOUT`, `PATCH`, `GOTO`, `OPENMINIDISPLAY`, `PING`, and `CONNECT` prefix.
+**Case:** Command keywords are matched **case-insensitively** for `SET`, `PUSH`, `LAYOUT`, `PATCH`, `GOTO`, `OPENMINIDISPLAY`, `PING`, and `CONNECT` prefix.
 
 ### 4.2 Handshake
 
@@ -253,7 +253,22 @@ SET dash/line 10,20,15,30,25
 SET dash/pie CPU:30,MEM:25,IO:20,NET:25
 ```
 
-### 4.5 LAYOUT (replace structure)
+### 4.5 PUSH (binary assets)
+
+```text
+PUSH <assetId> <base64>
+```
+
+- Decodes standard base64 and writes to app cache as `assetId`.
+- Use with `image` components: `SET <card>/<comp> asset:<assetId>` (after `PUSH`).
+- One asset per line; suitable for GIFs and other binary media.
+
+```text
+PUSH mahiro.gif R0lGODlh…
+SET mahiro/img asset:mahiro.gif
+```
+
+### 4.6 LAYOUT (replace structure)
 
 ```text
 LAYOUT <json>
@@ -268,7 +283,7 @@ LAYOUT <json>
 | Valid layout JSON | Pages/grid/cards replaced; page index clamped; card scripts restarted |
 | Invalid JSON / empty pages / version < 2 | Ignored |
 
-### 4.6 PATCH (merge pages)
+### 4.7 PATCH (merge pages)
 
 ```text
 PATCH <json>
@@ -277,7 +292,7 @@ PATCH <json>
 - JSON shape: `{ "pages": [ … ] }`
 - Each page is merged by **`id`**: existing page replaced, unknown page appended.
 
-### 4.7 GOTO (switch page)
+### 4.8 GOTO (switch page)
 
 ```text
 GOTO <index>
@@ -372,7 +387,7 @@ Validate with: [`docs/schemas/layout.v2.schema.json`](schemas/layout.v2.schema.j
 | Field | Required | Values |
 |-------|----------|--------|
 | `id` | Yes | Used in `SET` as `<cardId>/<componentId>` |
-| `type` | Yes | `text`, `metric`, `progress`, `ring`, `line`, `bar`, `pie`, `button`, `toggle` |
+| `type` | Yes | `text`, `metric`, `progress`, `ring`, `line`, `bar`, `pie`, `button`, `toggle`, `image` |
 | `row`, `col` | Yes | 0-based inner grid origin |
 | `rowSpan`, `colSpan` | No (default `1`) | Cell span |
 | `style` | No | `headline`, `body`, `caption`, `metric` |
@@ -495,6 +510,7 @@ Widget type is taken from **current layout** for that `cardId/componentId`. If n
 | `progress`, `ring` | Number 0–100 | Optional `%` suffix; clamped 0–100 |
 | `line`, `bar` | Comma-separated floats | `10, 20.5, 3` |
 | `pie` | `label:value` pairs OR comma numbers | `CPU:30,MEM:70` or `30,70` → S1, S2… |
+| `image` | `asset:<id>` after `PUSH`, or local `file://` path | Decoded file on device |
 | `button`, `toggle` | Ignored for display value | Use `set_prop` from Lua or toggle UI |
 
 ---

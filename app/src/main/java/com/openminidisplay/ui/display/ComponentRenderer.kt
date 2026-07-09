@@ -16,6 +16,7 @@ import com.openminidisplay.display.model.WidgetValue
 import com.openminidisplay.script.CardScriptManager
 import com.openminidisplay.ui.widgets.BarChartWidget
 import com.openminidisplay.ui.widgets.ButtonComponent
+import com.openminidisplay.ui.widgets.ImageWidget
 import com.openminidisplay.ui.widgets.LineChartWidget
 import com.openminidisplay.ui.widgets.PieChartWidget
 import com.openminidisplay.ui.widgets.ProgressBarWidget
@@ -125,6 +126,14 @@ fun RenderComponent(
                     DisplayStore.setComponentProp(cardId, slot.id, "checked", checked.toString())
                     CardScriptManager.dispatchEvent(cardId, slot.id, "change", checked.toString())
                 },
+                modifier = modifier,
+            )
+        }
+        ComponentType.IMAGE -> {
+            val src = (value as? WidgetValue.TextValue)?.text ?: ""
+            ImageWidget(
+                src = src,
+                fill = expanded,
                 modifier = modifier,
             )
         }

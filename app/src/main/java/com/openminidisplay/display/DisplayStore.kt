@@ -191,7 +191,7 @@ object DisplayStore {
 
     private fun defaultValue(type: ComponentType): WidgetValue {
         return when (type) {
-            ComponentType.TEXT, ComponentType.METRIC -> WidgetValue.TextValue("--")
+            ComponentType.TEXT, ComponentType.METRIC, ComponentType.IMAGE -> WidgetValue.TextValue("--")
             ComponentType.PROGRESS, ComponentType.RING -> WidgetValue.Percent(0f)
             ComponentType.LINE, ComponentType.BAR -> WidgetValue.Series(emptyList())
             ComponentType.PIE -> WidgetValue.Pie(emptyList())
@@ -209,6 +209,7 @@ object DisplayStore {
             "metric" -> ComponentType.METRIC
             "button" -> ComponentType.BUTTON
             "toggle" -> ComponentType.TOGGLE
+            "image", "img" -> ComponentType.IMAGE
             else -> ComponentType.TEXT
         }
     }
@@ -217,10 +218,22 @@ object DisplayStore {
         if (raw.isBlank() && type.isDisplayType) return null
         return when (type) {
             ComponentType.TEXT, ComponentType.METRIC -> WidgetValue.TextValue(raw)
+            ComponentType.IMAGE -> {
+                val path = resolveImagePath(raw) ?: return null
+                WidgetValue.TextValue(path)
+            }
             ComponentType.PROGRESS, ComponentType.RING -> WidgetValue.Percent(parsePercent(raw))
             ComponentType.LINE, ComponentType.BAR -> WidgetValue.Series(parseSeries(raw))
             ComponentType.PIE -> WidgetValue.Pie(parsePie(raw))
             ComponentType.BUTTON, ComponentType.TOGGLE -> WidgetValue.TextValue(raw)
+        }
+    }
+
+    private fun resolveImagePath(raw: String): String? {
+        return if (raw.startsWith("asset:", ignoreCase = true)) {
+            DisplayAssetStore.resolvePath(raw)
+        } else {
+            raw
         }
     }
 
