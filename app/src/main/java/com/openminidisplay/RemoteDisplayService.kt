@@ -71,7 +71,7 @@ class RemoteDisplayService : Service() {
         acquireServiceWakeLock()
         acquireWifiLock()
         startForeground(NOTIFICATION_ID, buildNotification(ConnectionState.DISCONNECTED))
-        CardScriptManager.start(serviceScope)
+        CardScriptManager.start(serviceScope) { notifyUserActivity(this) }
         startListener()
         startHeartbeatMonitor()
         if (RuntimeState.connectionState.value == ConnectionState.DISCONNECTED) {

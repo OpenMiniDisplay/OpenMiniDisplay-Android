@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class LuaCardRuntime(
     private val card: DisplayCard,
     private val serviceScope: CoroutineScope,
+    private val onWake: () -> Unit,
 ) {
     private val scriptExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "card-script-${card.id}").apply { isDaemon = true }
@@ -29,6 +30,7 @@ class LuaCardRuntime(
         onEvery = { seconds, name -> scheduleTimer(name, seconds) },
         onCancel = { name -> cancelTimer(name) },
         onHttpGet = { url, callback -> launchHttpGet(url, callback) },
+        onWake = onWake,
     )
     private val timers = mutableMapOf<String, Job>()
     private val paused = AtomicBoolean(false)
@@ -79,6 +81,8 @@ class LuaCardRuntime(
             }
         }
     }
+
+    fun hasActiveTimers(): Boolean = timers.isNotEmpty() && !paused.get() && !destroyed.get()
 
     fun dispatchEvent(componentId: String, event: String, value: String? = null) {
         if (destroyed.get() || paused.get()) return

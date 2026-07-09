@@ -1,5 +1,6 @@
 package com.openminidisplay.display
 
+import com.openminidisplay.display.model.ComponentAlign
 import com.openminidisplay.display.model.ComponentProps
 import com.openminidisplay.display.model.ComponentType
 import com.openminidisplay.display.model.DisplayKeys
@@ -70,6 +71,17 @@ object DisplayStore {
             "label" -> current.copy(label = value)
             "enabled" -> current.copy(enabled = value.equals("true", ignoreCase = true) || value == "1")
             "checked" -> current.copy(checked = value.equals("true", ignoreCase = true) || value == "1")
+            "align" -> {
+                val align = ComponentAlign.fromRaw(value) ?: return false
+                current.copy(align = align)
+            }
+            "fill" -> current.copy(fill = value.equals("true", ignoreCase = true) || value == "1")
+            "fit" -> current.copy(fit = value.equals("true", ignoreCase = true) || value == "1")
+            "scale" -> {
+                val scale = value.toFloatOrNull() ?: return false
+                current.copy(scale = scale.coerceIn(0.2f, 1f))
+            }
+            "showlabel" -> current.copy(showLabel = value.equals("true", ignoreCase = true) || value == "1")
             else -> return false
         }
         _componentProps.value = _componentProps.value.toMutableMap().apply { put(qualified, updated) }

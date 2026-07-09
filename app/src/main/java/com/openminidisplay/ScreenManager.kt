@@ -9,6 +9,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
 import android.view.WindowManager
+import com.openminidisplay.script.CardScriptManager
 import com.openminidisplay.settings.AppPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -39,7 +40,9 @@ class ScreenManager(private val context: Context) {
     }
 
     fun onDisconnected() {
-        releaseScreenWakeLock()
+        if (!CardScriptManager.hasActiveScripts()) {
+            releaseScreenWakeLock()
+        }
     }
 
     fun shouldKeepScreenOn(): Boolean {
@@ -65,7 +68,9 @@ class ScreenManager(private val context: Context) {
             if (RuntimeState.connectionState.value == ConnectionState.CONNECTED) return@launch
             displayPowerSavingActive = true
             pendingPluggedIdleDim = true
-            releaseScreenWakeLock()
+            if (!CardScriptManager.hasActiveScripts()) {
+                releaseScreenWakeLock()
+            }
             if (!PowerState.isPluggedIn(context)) {
                 pendingPluggedIdleDim = false
                 enterBatteryLowPower()
@@ -94,7 +99,11 @@ class ScreenManager(private val context: Context) {
         activity.intent?.action = null
         configurePreventLock(activity)
         startGradualDim(activity) {
-            showPitchBlackScreen()
+            if (CardScriptManager.hasActiveScripts()) {
+                applyBrightness(activity, scriptIdleBrightnessFloor(), forceSystemUpdate = true)
+            } else {
+                showPitchBlackScreen()
+            }
         }
     }
 
@@ -129,20 +138,23 @@ class ScreenManager(private val context: Context) {
             val startBrightness = RuntimeState.brightness.value.coerceIn(0f, 1f)
             val startTimeMs = System.currentTimeMillis()
             val durationMs = AppPreferences.gradualDimMs()
+            val floor = if (CardScriptManager.hasActiveScripts()) scriptIdleBrightnessFloor() else 0f
             while (true) {
                 val elapsed = System.currentTimeMillis() - startTimeMs
                 if (elapsed >= durationMs) {
-                    applyBrightness(activity, 0f, forceSystemUpdate = true)
+                    applyBrightness(activity, floor, forceSystemUpdate = true)
                     break
                 }
                 val progress = elapsed.toFloat() / durationMs
                 val fraction = startBrightness * (1f - progress)
-                applyBrightness(activity, fraction)
+                applyBrightness(activity, fraction.coerceAtLeast(floor))
                 delay(FRAME_DELAY_MS)
             }
             onComplete()
         }
     }
+
+    private fun scriptIdleBrightnessFloor(): Float = SCRIPT_IDLE_BRIGHTNESS_FLOOR
 
     fun restoreBrightnessLevel(activity: Activity? = null) {
         cancelDimming()
@@ -321,6 +333,7 @@ class ScreenManager(private val context: Context) {
         private const val WAKE_LOCK_TIMEOUT_MS = 10 * 60 * 60 * 1000L
         const val GRADUAL_DIM_DURATION_MS = 10_000L
         private const val FRAME_DELAY_MS = 16L
+        private const val SCRIPT_IDLE_BRIGHTNESS_FLOOR = 0.2f
 
         const val MIN_BRIGHTNESS = 0
         const val MAX_BRIGHTNESS = 255
