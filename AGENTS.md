@@ -76,7 +76,7 @@ RemoteDisplayService ──► DisplayCommandHandler
 | `RuntimeState` | Connection state, screen brightness, and power plug status |
 | `PowerState` | Reads whether the device is connected to external power |
 | `ChargeLimitManager` | Best-effort 80% charge limit when plugged in (OEM/settings dependent) |
-| `OpenMiniDisplayApp` | Application entry; holds singleton `ScreenManager` |
+| `OpenMiniDisplayApp` | Application entry; singleton `ScreenManager`; tracks resumed `MainActivity` for plugged idle dim |
 | `ScreenManager` | Brightness, wake locks, low-power transitions |
 | `DisplayHost` | Full-screen pager + page dots |
 | `PageRenderer` | Page grid of cards; single-component card pages are borderless |
@@ -184,7 +184,7 @@ Power source affects screen and charging policy.
 | **After dim (plugged only)** | Navigate to `PitchBlackActivity` (content hidden, screen stays on) |
 | **Battery low-power** | Release service wake/Wi‑Fi locks; clear keep-screen-on; finish UI task |
 | **Battery deep idle** | Stop TCP listener; **pause card scripts**; notification shows sleep state; wake restores listener + scripts |
-| **User touch** (while disconnected) | Restore brightness, return to dashboard, reset 60 s timer |
+| **User touch / power plug or unplug** (while disconnected) | Restore brightness, return to dashboard, reset 60 s timer |
 | **Leave dashboard** (settings, home, task switch) | Restore pre-display **system** brightness (`ScreenManager.restoreUserBrightness`); return to dashboard restores display brightness when connected |
 | **Plugged in** | Try to enable **80% charge limit** via OEM/settings keys when permitted (`WRITE_SETTINGS` / device support) |
 | **Unplugged** | Restore previous charge-limit setting if app had applied one |

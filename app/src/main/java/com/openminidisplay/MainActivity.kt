@@ -68,13 +68,13 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        handlePowerIntents()
+        resumeDisplayState()
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handlePowerIntents()
+        resumeDisplayState()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -101,28 +101,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun handlePowerIntents() {
-        if (intent?.action == ScreenManager.ACTION_BEGIN_LOW_POWER) {
-            handleBeginLowPowerIfNeeded()
-        }
-    }
-
-    private fun handleBeginLowPowerIfNeeded() {
-        if (intent?.action != ScreenManager.ACTION_BEGIN_LOW_POWER) return
-        intent.action = null
-
-        screenManager.configurePreventLock(this)
-        screenManager.startGradualDim(this) {
-            screenManager.showPitchBlackScreen()
+    private fun resumeDisplayState() {
+        screenManager.consumePluggedIdleDim(this)
+        screenManager.applyScreenPolicy(this)
+        if (screenManager.shouldRestoreDisplayBrightness()) {
+            screenManager.restoreBrightnessLevel(this)
         }
     }
 
     override fun onResume() {
         super.onResume()
-        screenManager.applyScreenPolicy(this)
-        if (screenManager.shouldRestoreDisplayBrightness()) {
-            screenManager.restoreBrightnessLevel(this)
-        }
+        resumeDisplayState()
     }
 
     override fun onStop() {
