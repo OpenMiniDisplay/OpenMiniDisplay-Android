@@ -283,13 +283,13 @@ class RemoteDisplayService : Service() {
         RuntimeState.setPluggedIn(plugged)
         RuntimeState.setBatteryLevel(PowerState.batteryLevelPercent(intent))
 
+        if (plugged == wasPlugged) return
+
         when {
-            plugged && !wasPlugged -> {
-                wakeFromBatteryDeepIdle()
-                ChargeLimitManager.onPowerConnected(this)
-            }
-            !plugged && wasPlugged -> ChargeLimitManager.onPowerDisconnected(this)
+            plugged -> ChargeLimitManager.onPowerConnected(this)
+            else -> ChargeLimitManager.onPowerDisconnected(this)
         }
+        handleUserActivity()
     }
 
     private fun enterBatteryDeepIdle() {

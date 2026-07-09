@@ -46,7 +46,7 @@ class PitchBlackActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (screenManager.shouldKeepScreenOn()) {
+        if (screenManager.isDisplayPowerSavingActive() || screenManager.shouldKeepScreenOn()) {
             screenManager.configurePreventLock(this)
         } else {
             finish()

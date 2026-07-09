@@ -76,7 +76,7 @@ RemoteDisplayService ──► DisplayCommandHandler
 | `RuntimeState` | Connection state, screen brightness, and power plug status |
 | `PowerState` | Reads whether the device is connected to external power |
 | `ChargeLimitManager` | Best-effort 80% charge limit when plugged in (OEM/settings dependent) |
-| `OpenMiniDisplayApp` | Application entry; holds singleton `ScreenManager` |
+| `OpenMiniDisplayApp` | Application entry; singleton `ScreenManager`; tracks resumed `MainActivity` for plugged idle dim |
 | `ScreenManager` | Brightness, wake locks, low-power transitions |
 | `DisplayHost` | Full-screen pager + page dots |
 | `PageRenderer` | Page grid of cards; single-component card pages are borderless |
@@ -102,7 +102,8 @@ Component types: `text`, `metric`, `progress`, `ring`, `line`, `bar`, `pie`, `bu
 
 Newline-terminated UTF-8 text over TCP.
 
-**External controller spec (normative for client authors):** [`docs/CONTROLLER_INTEGRATION.md`](docs/CONTROLLER_INTEGRATION.md)
+**External controller spec (normative for PC / cross-platform clients):** [`docs/CONTROLLER_INTEGRATION.md`](docs/CONTROLLER_INTEGRATION.md)  
+**Examples:** [`docs/examples/README.md`](docs/examples/README.md)
 
 | Command | Effect |
 |---------|--------|
@@ -140,7 +141,7 @@ Newline-terminated UTF-8 text over TCP.
 ```
 
 Per-component fields: `id`, `type`, `row`, `col`, `rowSpan`, `colSpan`, optional `style`, optional `label`, optional `checked` (toggle initial state).
-Optional per-card `script` (Lua source). v1 `widgets` layouts are **not** accepted.
+Optional per-card `script` (Lua source). Layout **v2 only** (`pages` → `cards` → `components`).
 
 ### Card Lua API (host-provided globals)
 
@@ -183,7 +184,7 @@ Power source affects screen and charging policy.
 | **After dim (plugged only)** | Navigate to `PitchBlackActivity` (content hidden, screen stays on) |
 | **Battery low-power** | Release service wake/Wi‑Fi locks; clear keep-screen-on; finish UI task |
 | **Battery deep idle** | Stop TCP listener; **pause card scripts**; notification shows sleep state; wake restores listener + scripts |
-| **User touch** (while disconnected) | Restore brightness, return to dashboard, reset 60 s timer |
+| **User touch / power plug or unplug** (while disconnected) | Restore brightness, return to dashboard, reset 60 s timer |
 | **Leave dashboard** (settings, home, task switch) | Restore pre-display **system** brightness (`ScreenManager.restoreUserBrightness`); return to dashboard restores display brightness when connected |
 | **Plugged in** | Try to enable **80% charge limit** via OEM/settings keys when permitted (`WRITE_SETTINGS` / device support) |
 | **Unplugged** | Restore previous charge-limit setting if app had applied one |
@@ -274,12 +275,14 @@ scripts/
 ├── card-script-test.sh
 └── connect-test.sh
 docs/
-├── CONTROLLER_INTEGRATION.md   # external controller / cross-platform agent spec
+├── CONTROLLER_INTEGRATION.md   # normative spec for PC / cross-platform controllers
 ├── ANDROID_DEV_CONTAINER.md    # Docker image USB adb requirements
-├── schemas/layout.v2.schema.json
-├── schemas/layout.v1.schema.json
-├── examples/reference_client.py
-└── examples/sample_card.lua
+├── examples/
+│   ├── README.md
+│   ├── reference_client.py
+│   ├── minimal_layout.json
+│   └── sample_card.lua
+└── schemas/layout.v2.schema.json
 LICENSE
 README.md
 AGENTS.md

@@ -1,0 +1,39 @@
+{
+  "version": 2,
+  "pages": [
+    {
+      "id": "dash",
+      "grid": { "rows": 2, "cols": 2, "gap": 8, "padding": 16 },
+      "cards": [
+        {
+          "id": "title",
+          "row": 0,
+          "col": 0,
+          "colSpan": 2,
+          "grid": { "rows": 1, "cols": 1, "gap": 0, "padding": 0 },
+          "components": [
+            { "id": "title", "type": "text", "row": 0, "col": 0, "style": "headline" }
+          ]
+        },
+        {
+          "id": "cpu",
+          "row": 1,
+          "col": 0,
+          "grid": { "rows": 1, "cols": 1, "gap": 0, "padding": 0 },
+          "components": [
+            { "id": "cpu", "type": "ring", "row": 0, "col": 0, "label": "CPU" }
+          ]
+        },
+        {
+          "id": "mem",
+          "row": 1,
+          "col": 1,
+          "grid": { "rows": 1, "cols": 1, "gap": 0, "padding": 0 },
+          "components": [
+            { "id": "mem", "type": "progress", "row": 0, "col": 0, "label": "MEM" }
+          ]
+        }
+      ]
+    }
+  ]
+}

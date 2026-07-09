@@ -26,10 +26,13 @@ class ScreenManager(private val context: Context) {
     private var dimJob: Job? = null
     private var lastSystemBrightness = -1
     private var savedSystemBrightness: Int? = null
+    @Volatile
     private var displayPowerSavingActive = false
+    @Volatile
+    private var pendingPluggedIdleDim = false
 
     fun onConnected() {
-        cancelDimming()
+        cancelPluggedIdleDim()
         restoreBrightnessLevel()
         acquireScreenWakeLock()
         navigateToDashboard()
@@ -46,20 +49,59 @@ class ScreenManager(private val context: Context) {
         return connected || (pluggedIn && keepWhenPlugged)
     }
 
+    fun isDisplayPowerSavingActive(): Boolean = displayPowerSavingActive
+
+    fun isDimming(): Boolean = dimJob?.isActive == true
+
+    /** Full display brightness on resume — not during plugged idle dim / pitch-black transition. */
+    fun shouldRestoreDisplayBrightness(): Boolean {
+        if (displayPowerSavingActive || pendingPluggedIdleDim || isDimming()) return false
+        if (RuntimeState.connectionState.value == ConnectionState.CONNECTED) return true
+        return shouldKeepScreenOn()
+    }
+
     fun beginLowPowerTransition() {
-        displayPowerSavingActive = true
-        releaseScreenWakeLock()
-        if (PowerState.isPluggedIn(context)) {
-            val intent = Intent(context, MainActivity::class.java).apply {
-                action = ACTION_BEGIN_LOW_POWER
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+        mainScope.launch {
+            if (RuntimeState.connectionState.value == ConnectionState.CONNECTED) return@launch
+            displayPowerSavingActive = true
+            pendingPluggedIdleDim = true
+            releaseScreenWakeLock()
+            if (!PowerState.isPluggedIn(context)) {
+                pendingPluggedIdleDim = false
+                enterBatteryLowPower()
+                return@launch
             }
-            context.startActivity(intent)
-        } else {
-            enterBatteryLowPower()
+            val resumed = OpenMiniDisplayApp.resumedMainActivity
+            if (resumed != null) {
+                consumePluggedIdleDim(resumed)
+            } else {
+                navigateToDashboard()
+            }
         }
+    }
+
+    /** Start plugged idle fade when MainActivity is ready (onResume / onNewIntent). */
+    fun consumePluggedIdleDim(activity: Activity) {
+        if (!pendingPluggedIdleDim && !displayPowerSavingActive) return
+        if (RuntimeState.connectionState.value == ConnectionState.CONNECTED) {
+            cancelPluggedIdleDim()
+            return
+        }
+        if (!PowerState.isPluggedIn(activity)) return
+        if (isDimming()) return
+
+        pendingPluggedIdleDim = false
+        activity.intent?.action = null
+        configurePreventLock(activity)
+        startGradualDim(activity) {
+            showPitchBlackScreen()
+        }
+    }
+
+    private fun cancelPluggedIdleDim() {
+        pendingPluggedIdleDim = false
+        displayPowerSavingActive = false
+        cancelDimming()
     }
 
     fun enterBatteryLowPower() {
@@ -77,7 +119,7 @@ class ScreenManager(private val context: Context) {
     }
 
     fun startGradualDim(activity: Activity, onComplete: () -> Unit = {}) {
-        if (!shouldKeepScreenOn()) {
+        if (!displayPowerSavingActive && !shouldKeepScreenOn()) {
             onComplete()
             return
         }
@@ -105,6 +147,7 @@ class ScreenManager(private val context: Context) {
     fun restoreBrightnessLevel(activity: Activity? = null) {
         cancelDimming()
         displayPowerSavingActive = false
+        pendingPluggedIdleDim = false
         captureSystemBrightnessIfNeeded()
         lastSystemBrightness = -1
         applyBrightness(activity, 1f, forceSystemUpdate = true)
@@ -281,7 +324,5 @@ class ScreenManager(private val context: Context) {
 
         const val MIN_BRIGHTNESS = 0
         const val MAX_BRIGHTNESS = 255
-
-        const val ACTION_BEGIN_LOW_POWER = "com.openminidisplay.action.BEGIN_LOW_POWER"
     }
 }
